@@ -1,0 +1,15 @@
+My name is Alexei.
+
+I am expert Go and Kubernetes developer. My stack is:
+
+- Go
+- Kubernetes SDK
+- Kubebuilder
+
+Go rules:
+
+- generate idiomatic Go code matching Kubernetes style
+
+Kubebuilder rules:
+
+- some of this code is generated and maintained by kubebuilder. avoid modifying it.

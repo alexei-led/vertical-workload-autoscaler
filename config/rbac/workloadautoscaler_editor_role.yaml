@@ -1,0 +1,27 @@
+# permissions for end users to edit workloadautoscalers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: workload-autoscaler
+    app.kubernetes.io/managed-by: kustomize
+  name: workloadautoscaler-editor-role
+rules:
+- apiGroups:
+  - autoscaling.k8s.io.autoscaling.k8s.io
+  resources:
+  - workloadautoscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - autoscaling.k8s.io.autoscaling.k8s.io
+  resources:
+  - workloadautoscalers/status
+  verbs:
+  - get
