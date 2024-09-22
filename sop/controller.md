@@ -6,11 +6,13 @@ This document outlines the detailed steps required to implement the WorkloadAuto
 
 - [ ] Open `internal/controller/workloadautoscaler_controller.go`
 - [ ] Fetch the WorkloadAutoscaler object
-- [ ] Fetch the target resource (Deployment, StatefulSet, CronJob, or DaemonSet)
+- [ ] Fetch the target resource (Deployment, StatefulSet, CronJob, or DaemonSet) from the VPA configuration
 - [ ] Fetch the associated VPA object
+- [ ] Watch for VPA recommendation updates
+- [ ] For the first run, discover and process existing VPA recommendations
 - [ ] Check if an update is needed based on VPA recommendations and WorkloadAutoscaler configuration
 - [ ] If an update is needed:
-  - [ ] Calculate new resource values
+  - [ ] Calculate new resource values based on StepSize configuration (round up to the nearest StepSize bucket)
   - [ ] Update the target resource
   - [ ] Force pod recreation by updating the `spec.template.metadata.annotations` with a timestamp or unique value, e.g., `workloadautoscaler.kubernetes.io/restartedAt: <current-timestamp>`
   - [ ] Add ArgoCD annotation to the target resource to prevent conflicts:
@@ -19,6 +21,8 @@ This document outlines the detailed steps required to implement the WorkloadAuto
       annotations:
         argocd.argoproj.io/compare-options: IgnoreResourceRequests
     ```
+- [ ] If the update is not allowed right now, keep the recommended value and retry until allowed and successful
+- [ ] Record progress (retry attempts and success or failure) statuses on the WorkloadAutoscaler object status
 - [ ] Update WorkloadAutoscaler status
 
 ## 2. Implement Helper Functions
@@ -29,21 +33,21 @@ This document outlines the detailed steps required to implement the WorkloadAuto
 - [ ] Implement functions to:
   - [ ] Fetch VPA objects
   - [ ] Parse VPA recommendations
+  - [ ] Watch for VPA recommendation updates
 
 ### 2.2. Resource Calculation and Update Functions
 
 - [ ] Create `internal/controller/resources.go`
 - [ ] Implement functions to:
-  - [ ] Calculate new resource values based on VPA recommendations
+  - [ ] Calculate new resource values based on VPA recommendations and StepSize configuration
   - [ ] Update resource requirements for target resources
 
 ### 2.3. Update Checker Functions
 
 - [ ] Create `internal/controller/update_checker.go`
 - [ ] Implement functions to:
-  - [ ] Determine if an update is allowed based on WorkloadAutoscaler configuration
-  - [ ] Check allowed update windows
-  - [ ] Check grace periods
+  - [ ] Determine if an update is allowed based on WorkloadAutoscaler configuration (time windows, grace periods, update frequency)
+  - [ ] If the update is not allowed, wait and retry (make wait time configurable)
 
 ## 3. Testing
 
