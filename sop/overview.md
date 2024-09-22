@@ -4,20 +4,20 @@ This document outlines the steps required to implement a working version of the 
 
 ## 1. Define the WorkloadAutoscaler Custom Resource Definition (CRD)
 
-- [ ] Define the WorkloadAutoscaler spec and status in `api/v1alpha1/workloadautoscaler_types.go`
-- [ ] Ensure the spec includes fields for:
-  - [ ] Target resource (using selectors or direct references)
-  - [ ] VPA reference
-  - [ ] Update frequency
-  - [ ] Allowed update windows
-  - [ ] Step size
-  - [ ] Grace period
-- [ ] Ensure the status includes detailed fields for tracking the state of the autoscaler
+- [x] Define the WorkloadAutoscaler spec and status in `api/v1alpha1/workloadautoscaler_types.go`
+- [x] Ensure the spec includes fields for:
+  - [x] Target resource (using selectors or direct references)
+  - [x] VPA reference
+  - [x] Update frequency
+  - [x] Allowed update windows
+  - [x] Step size
+  - [x] Grace period
+- [x] Ensure the status includes detailed fields for tracking the state of the autoscaler
 
 ## 2. Generate CRD manifests and code
 
-- [ ] Run `make manifests` to generate CRD manifests
-- [ ] Run `make generate` to update generated code
+- [x] Run `make manifests` to generate CRD manifests
+- [x] Run `make generate` to update generated code
 
 ## 3. Implement the controller logic
 
