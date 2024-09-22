@@ -61,7 +61,7 @@ make generate
 
 ## 5. Commit Changes
 
-- [x] Review all changes made to the following files:
+- [x] Review all changes made ito the following files:
   - `api/v1alpha1/workloadautoscaler_types.go`
   - `api/v1alpha1/zz_generated.deepcopy.go`
   - `config/crd/bases/autoscaling.k8s.io_workloadautoscalers.yaml`
