@@ -1,4 +1,4 @@
-apiVersion: autoscaling.k8s.io.autoscaling.k8s.io/v1alpha1
+apiVersion: autoscaling.k8s.io/v1alpha1
 kind: WorkloadAutoscaler
 metadata:
   labels:
@@ -6,4 +6,61 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: workloadautoscaler-sample
 spec:
-  # TODO(user): Add fields here
+  vpaReference:
+    name: my-vpa
+    namespace: default
+
+  target:
+    selector:
+      matchLabels:
+        app: my-application
+    resourceReference:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: my-deployment
+
+  stepSize:
+    cpu: "100m"
+    memory: "100Mi"
+
+  allowedUpdateWindows:
+    - dayOfWeek: "Monday"
+      startTime: "09:00"
+      endTime: "17:00"
+      timeZone: "UTC"
+    - dayOfWeek: "Friday"
+      startTime: "09:00"
+      endTime: "12:00"
+      timeZone: "UTC"
+
+  updateFrequency:
+    duration: "10m"
+
+  gracePeriod:
+    duration: "5m"
+
+status:
+  currentStatus: "Active"
+  targetedResource:
+    kind: "Deployment"
+    name: "my-deployment"
+  lastUpdated: "2024-09-21T12:00:00Z"
+  currentRequests:
+    cpu: "500m"
+    memory: "512Mi"
+  recommendedRequests:
+    cpu: "600m"
+    memory: "600Mi"
+  skippedUpdates: true
+  skipReason: "Change below step size"
+  stepSize:
+    cpu: "100m"
+    memory: "100Mi"
+  errors:
+    - "Failed to update my-deployment: resource conflict"
+  updateCount: 3
+  conditions:
+    - type: "Ready"
+      status: "True"
+    - type: "Updating"
+      status: "False"

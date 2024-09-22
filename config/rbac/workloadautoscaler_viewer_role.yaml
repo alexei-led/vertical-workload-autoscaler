@@ -8,7 +8,7 @@ metadata:
   name: workloadautoscaler-viewer-role
 rules:
 - apiGroups:
-  - autoscaling.k8s.io.autoscaling.k8s.io
+  - autoscaling.k8s.io
   resources:
   - workloadautoscalers
   verbs:
@@ -16,7 +16,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - autoscaling.k8s.io.autoscaling.k8s.io
+  - autoscaling.k8s.io
   resources:
   - workloadautoscalers/status
   verbs:

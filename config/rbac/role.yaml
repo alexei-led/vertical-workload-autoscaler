@@ -1,11 +1,32 @@
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  labels:
-    app.kubernetes.io/name: workload-autoscaler
-    app.kubernetes.io/managed-by: kustomize
   name: manager-role
 rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - autoscaling.k8s.io
+  resources:
+  - workloadautoscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - autoscaling.k8s.io
+  resources:
+  - workloadautoscalers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - autoscaling.k8s.io
+  resources:
+  - workloadautoscalers/status
+  verbs:
+  - get
+  - patch
+  - update

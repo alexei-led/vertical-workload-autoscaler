@@ -8,7 +8,7 @@ metadata:
   name: workloadautoscaler-editor-role
 rules:
 - apiGroups:
-  - autoscaling.k8s.io.autoscaling.k8s.io
+  - autoscaling.k8s.io
   resources:
   - workloadautoscalers
   verbs:
@@ -20,7 +20,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - autoscaling.k8s.io.autoscaling.k8s.io
+  - autoscaling.k8s.io
   resources:
   - workloadautoscalers/status
   verbs:
