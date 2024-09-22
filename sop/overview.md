@@ -21,26 +21,12 @@ This document outlines the steps required to implement a working version of the 
 
 ## 3. Implement the controller logic
 
-Update `internal/controller/workloadautoscaler_controller.go`:
-
-- [ ] Implement the Reconcile function:
-  - [ ] Fetch the WorkloadAutoscaler object
-  - [ ] Fetch the target resource (Deployment, StatefulSet, CronJob, or DaemonSet)
-  - [ ] Fetch the associated VPA object
-  - [ ] Check if an update is needed based on VPA recommendations and WorkloadAutoscaler configuration
-  - [ ] If an update is needed:
-    - [ ] Calculate new resource values
-    - [ ] Update the target resource
-    - [ ] Force pod recreation by updating a specific attribute
-  - [ ] Update WorkloadAutoscaler status
+- [ ] Implement the Reconcile function in `internal/controller/workloadautoscaler_controller.go`
+- [ ] Implement necessary helper functions in `internal/controller/`
 
 ## 4. Implement helper functions
 
-Create new files in the `internal/controller/` directory:
-
-- [ ] `vpa.go`: Functions to interact with VPA objects
-- [ ] `resources.go`: Functions to calculate and update resource requirements
-- [ ] `update_checker.go`: Functions to determine if an update is allowed based on configuration
+- [ ] Create `vpa.go`, `resources.go`, and `update_checker.go` in `internal/controller/`
 
 ## 5. Update RBAC permissions
 
