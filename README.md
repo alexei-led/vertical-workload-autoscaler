@@ -1,18 +1,33 @@
 # workload-autoscaler
-// TODO(user): Add simple overview of use/purpose
+
+WorkloadAutoscaler is a Kubernetes-native solution designed to enhance Vertical Pod Autoscaler (VPA) functionality by providing configurable and controlled resource updates for workloads. It offers granular control over update windows, step sizes, and compatibility with Horizontal Pod Autoscalers (HPA), KEDA, StatefulSets, and DaemonSets. The solution avoids immediate pod evictions, ensuring smooth resource adjustments for improved performance and cost efficiency.
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+
+WorkloadAutoscaler extends the capabilities of the Vertical Pod Autoscaler (VPA) by introducing more control over how and when resource updates are applied to your workloads. This includes defining specific update windows, step sizes for resource adjustments, and ensuring compatibility with other Kubernetes components like HPA, KEDA, StatefulSets, and DaemonSets. This approach helps in maintaining performance and cost efficiency without causing disruptions due to immediate pod evictions.
+
+## Key Features
+
+- **Controlled Updates**: Instead of immediate pod evictions, the Workload Autoscaler updates the resource requests in the Deployment/StatefulSet/DaemonSet spec, triggering controlled pod updates based on specified configurations.
+- **Configurable Parameters**:
+  - **Frequency of Updates**: Configure how often updates are applied to avoid too frequent changes.
+  - **Allowed Update Windows**: Define time windows during which updates are allowed, reducing the risk of applying changes during peak usage times.
+  - **Step Size**: Set the increment or decrement size for resource changes to avoid frequent minor adjustments and ensure updates are applied in meaningful steps.
+  - **Grace Period**: Specify a grace period before applying changes to minimize disruptions.
+  - **Min/Max Boundaries**: Define minimum and maximum resource limits to prevent resource exhaustion or over-provisioning.
+  - **Compatibility Checks**: Ensure compatibility with HPA, KEDA, StatefulSets, and DaemonSets to avoid conflicts and manage scaling effectively.
 
 ## Getting Started
 
 ### Prerequisites
+
 - go version v1.22.0+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
 
 ### To Deploy on the cluster
+
 **Build and push your image to the location specified by `IMG`:**
 
 ```sh
@@ -45,9 +60,10 @@ You can apply the samples (examples) from the config/sample:
 kubectl apply -k config/samples/
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+>**NOTE**: Ensure that the samples have default values to test it out.
 
 ### To Uninstall
+
 **Delete the instances (CRs) from the cluster:**
 
 ```sh
@@ -90,15 +106,21 @@ kubectl apply -f https://raw.githubusercontent.com/<org>/workload-autoscaler/<ta
 ```
 
 ## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
 
-**NOTE:** Run `make help` for more information on all potential `make` targets
+We welcome contributions to the WorkloadAutoscaler project. Please follow these steps to contribute:
 
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+1. Fork the repository.
+2. Create a new branch (`git checkout -b feature-branch`).
+3. Make your changes.
+4. Commit your changes (`git commit -am 'Add new feature'`).
+5. Push to the branch (`git push origin feature-branch`).
+6. Create a new Pull Request.
+
+**NOTE:** Run `make help` for more information on all potential `make` targets.
+
+More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html).
 
 ## License
-
-Copyright 2024 Alexei Ledenev.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -111,4 +133,3 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-
