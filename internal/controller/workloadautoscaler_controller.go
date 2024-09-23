@@ -19,12 +19,16 @@ package controller
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-
 	autoscalingk8siov1alpha1 "github.com/alexei-led/workload-autoscaler/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // WorkloadAutoscalerReconciler reconciles a WorkloadAutoscaler object
@@ -39,18 +43,71 @@ type WorkloadAutoscalerReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the WorkloadAutoscaler object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *WorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	// Fetch the WorkloadAutoscaler object
+	var wa autoscalingk8siov1alpha1.WorkloadAutoscaler
+	if err := r.Get(ctx, req.NamespacedName, &wa); err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("WorkloadAutoscaler resource not found. Ignoring since object must be deleted.")
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "Failed to get WorkloadAutoscaler")
+		return ctrl.Result{}, err
+	}
 
+	// Fetch the associated VPA object
+	vpa, err := r.fetchVPA(ctx, wa)
+	if err != nil {
+		logger.Error(err, "Failed to fetch VPA")
+		return ctrl.Result{}, err
+	}
+
+	// Fetch the target resource from the VPA configuration
+	targetResource, err := r.fetchTargetResource(ctx, vpa)
+	if err != nil {
+		logger.Error(err, "Failed to fetch target resource")
+		return ctrl.Result{}, err
+	}
+
+	// Check if an update is needed based on VPA recommendations and WorkloadAutoscaler configuration
+	if r.isUpdateNeeded(wa, vpa.Status.Recommendation) {
+		// Calculate new resource values based on StepSize configuration
+		newResources := r.calculateNewResources(wa, vpa.Status.Recommendation)
+
+		// Update the target resource
+		if err = r.updateTargetResource(ctx, targetResource, newResources); err != nil {
+			logger.Error(err, "Failed to update target resource")
+			return ctrl.Result{}, err
+		}
+
+		// Force pod recreation by updating the spec.template.metadata.annotations with a timestamp
+		if err = r.forcePodRecreation(ctx, targetResource); err != nil {
+			logger.Error(err, "Failed to force pod recreation")
+			return ctrl.Result{}, err
+		}
+
+		// Add ArgoCD annotation to the target resource to prevent conflicts
+		if err := r.addArgoCDAnnotation(ctx, targetResource); err != nil {
+			logger.Error(err, "Failed to add ArgoCD annotation")
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Record progress statuses on the WorkloadAutoscaler object status
+	if err = r.recordProgress(ctx, wa); err != nil {
+		logger.Error(err, "Failed to record progress")
+		return ctrl.Result{}, err
+	}
+
+	// Update WorkloadAutoscaler status
+	if err = r.updateStatus(ctx, wa); err != nil {
+		logger.Error(err, "Failed to update WorkloadAutoscaler status")
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Successfully reconciled WorkloadAutoscaler")
 	return ctrl.Result{}, nil
 }
 
@@ -58,5 +115,32 @@ func (r *WorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.R
 func (r *WorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&autoscalingk8siov1alpha1.WorkloadAutoscaler{}).
+		Watches(
+			&vpav1.VerticalPodAutoscaler{},
+			handler.EnqueueRequestsFromMapFunc(r.findObjectsFoVPA),
+			builder.WithPredicates(VPARecommendationChangedPredicate{})).
 		Complete(r)
+}
+
+func (r *WorkloadAutoscalerReconciler) findObjectsFoVPA(_ context.Context, obj client.Object) []reconcile.Request {
+	var requests []reconcile.Request
+	var waList autoscalingk8siov1alpha1.WorkloadAutoscalerList
+	if err := r.List(context.Background(), &waList); err != nil {
+		return requests
+	}
+	vpa, ok := obj.(*vpav1.VerticalPodAutoscaler)
+	if !ok {
+		return requests
+	}
+	for _, wa := range waList.Items {
+		if wa.Spec.VPAReference.Name == vpa.Name && wa.Spec.VPAReference.Namespace == vpa.Namespace {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: client.ObjectKey{
+					Namespace: wa.Namespace,
+					Name:      wa.Name,
+				},
+			})
+		}
+	}
+	return requests
 }
