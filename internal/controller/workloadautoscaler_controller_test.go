@@ -1,23 +1,8 @@
-/*
-Copyright 2024 Alexei Ledenev.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,54 +16,103 @@ import (
 )
 
 var _ = Describe("WorkloadAutoscaler Controller", func() {
-	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+	const resourceName = "test-resource"
+	const namespace = "default"
 
-		ctx := context.Background()
+	var (
+		ctx                  context.Context
+		typeNamespacedName   types.NamespacedName
+		workloadautoscaler   *autoscalingk8siov1alpha1.WorkloadAutoscaler
+		controllerReconciler *WorkloadAutoscalerReconciler
+	)
 
-		typeNamespacedName := types.NamespacedName{
+	BeforeEach(func() {
+		ctx = context.Background()
+		typeNamespacedName = types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: namespace,
 		}
-		workloadautoscaler := &autoscalingk8siov1alpha1.WorkloadAutoscaler{}
+		workloadautoscaler = &autoscalingk8siov1alpha1.WorkloadAutoscaler{}
+		controllerReconciler = &WorkloadAutoscalerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
 
-		BeforeEach(func() {
-			By("creating the custom resource for the Kind WorkloadAutoscaler")
-			err := k8sClient.Get(ctx, typeNamespacedName, workloadautoscaler)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &autoscalingk8siov1alpha1.WorkloadAutoscaler{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					// TODO(user): Specify other spec details if needed.
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		By("creating the custom resource for the Kind WorkloadAutoscaler")
+		err := k8sClient.Get(ctx, typeNamespacedName, workloadautoscaler)
+		if err != nil && errors.IsNotFound(err) {
+			resource := &autoscalingk8siov1alpha1.WorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: namespace,
+				},
+				// TODO: Specify other spec details if needed.
 			}
-		})
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		}
+	})
 
-		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &autoscalingk8siov1alpha1.WorkloadAutoscaler{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance WorkloadAutoscaler")
+	AfterEach(func() {
+		By("cleaning up the custom resource for the Kind WorkloadAutoscaler")
+		resource := &autoscalingk8siov1alpha1.WorkloadAutoscaler{}
+		err := k8sClient.Get(ctx, typeNamespacedName, resource)
+		if err == nil {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &WorkloadAutoscalerReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
+		}
+	})
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+	It("should successfully reconcile the resource", func() {
+		By("Reconciling the created resource")
+		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
 		})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Example: If you expect a certain status condition after reconciliation, verify it here.
+		Eventually(func() error {
+			return k8sClient.Get(ctx, typeNamespacedName, workloadautoscaler)
+		}).Should(Succeed())
+	})
+
+	It("should delay update if outside allowed update window", func() {
+		wa := &autoscalingk8siov1alpha1.WorkloadAutoscaler{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      resourceName,
+				Namespace: namespace,
+			},
+			Spec: autoscalingk8siov1alpha1.WorkloadAutoscalerSpec{
+				AllowedUpdateWindows: []autoscalingk8siov1alpha1.UpdateWindow{
+					{
+						DayOfWeek: "Monday",
+						StartTime: "10:00",
+						EndTime:   "12:00",
+						TimeZone:  "UTC",
+					},
+				},
+			},
+		}
+
+		// Create the WorkloadAutoscaler object
+		Expect(k8sClient.Create(ctx, wa)).Should(Succeed())
+		defer func() { Expect(k8sClient.Delete(ctx, wa)).To(Succeed()) }()
+
+		// Mock current time to be outside the allowed update window
+		now := time.Date(2024, time.September, 21, 9, 0, 0, 0, time.UTC)
+		originalTimeNow := timeNow
+		timeNow = func() time.Time { return now }
+		defer func() { timeNow = originalTimeNow }()
+
+		// Reconcile
+		req := reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		}
+		_, err := controllerReconciler.Reconcile(ctx, req)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Check if the update was delayed
+		Eventually(func() error {
+			return k8sClient.Get(ctx, req.NamespacedName, wa)
+		}).Should(Succeed())
+		Expect(wa.Status.LastUpdated).To(BeNil())
 	})
 })

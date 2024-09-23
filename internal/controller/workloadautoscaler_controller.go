@@ -57,6 +57,12 @@ func (r *WorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
+	// Check if an update is allowed now or should be delayed
+	if delay, shouldDelay := r.shouldDelayUpdate(wa); shouldDelay {
+		logger.Info("Delaying update", "RequeueAfter", delay)
+		return ctrl.Result{RequeueAfter: delay}, nil
+	}
+
 	// Fetch the associated VPA object
 	vpa, err := r.fetchVPA(ctx, wa)
 	if err != nil {
@@ -71,17 +77,17 @@ func (r *WorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	// Check if an update is needed based on VPA recommendations and WorkloadAutoscaler configuration
-	if r.isUpdateNeeded(wa, vpa.Status.Recommendation) {
-		// Calculate new resource values based on StepSize configuration
-		newResources := r.calculateNewResources(wa, vpa.Status.Recommendation)
+	// Calculate new resource values based on StepSize configuration
+	newResources := r.calculateNewResources(wa, vpa.Status.Recommendation)
 
-		// Update the target resource
-		if err = r.updateTargetResource(ctx, targetResource, newResources); err != nil {
-			logger.Error(err, "Failed to update target resource")
-			return ctrl.Result{}, err
-		}
+	// Update the target resource
+	updated, err := r.updateTargetResource(ctx, targetResource, newResources)
+	if err != nil {
+		logger.Error(err, "Failed to update target resource")
+		return ctrl.Result{}, err
+	}
 
+	if updated {
 		// Update annotations to force pod recreation and add GitOps conflict avoidance
 		if err = r.updateAnnotations(ctx, targetResource); err != nil {
 			logger.Error(err, "Failed to update annotations")
@@ -107,19 +113,24 @@ func (r *WorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *WorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&autoscalingk8siov1alpha1.WorkloadAutoscaler{}).
 		Watches(
 			&vpav1.VerticalPodAutoscaler{},
 			handler.EnqueueRequestsFromMapFunc(r.findObjectsFoVPA),
 			builder.WithPredicates(VPARecommendationChangedPredicate{})).
-		Complete(r)
+		Complete(r); err != nil {
+		log.Log.Error(err, "Failed to setup controller with manager")
+		return err
+	}
+	return nil
 }
 
 func (r *WorkloadAutoscalerReconciler) findObjectsFoVPA(_ context.Context, obj client.Object) []reconcile.Request {
 	var requests []reconcile.Request
 	var waList autoscalingk8siov1alpha1.WorkloadAutoscalerList
 	if err := r.List(context.Background(), &waList); err != nil {
+		log.Log.Error(err, "Failed to list WorkloadAutoscaler objects")
 		return requests
 	}
 	vpa, ok := obj.(*vpav1.VerticalPodAutoscaler)
