@@ -16,6 +16,7 @@ WorkloadAutoscaler extends the capabilities of the Vertical Pod Autoscaler (VPA)
   - **Grace Period**: Specify a grace period before applying changes to minimize disruptions.
   - **Min/Max Boundaries**: Define minimum and maximum resource limits to prevent resource exhaustion or over-provisioning.
   - **Compatibility Checks**: Ensure compatibility with HPA, KEDA, StatefulSets, and DaemonSets to avoid conflicts and manage scaling effectively.
+  - **Timezone Support**: Ensure that allowed update windows are respected according to the specified timezones. If no allowed update windows are set, updates happen immediately.
 
 ## Getting Started
 
@@ -36,7 +37,7 @@ make docker-build docker-push IMG=<some-registry>/workload-autoscaler:tag
 
 **NOTE:** This image ought to be published in the personal registry you specified.
 And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+Make sure you have the proper permission to the registry if the above commands don't work.
 
 **Install the CRDs into the cluster:**
 
