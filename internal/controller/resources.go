@@ -9,6 +9,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -90,11 +91,24 @@ func roundUp(quantity resource.Quantity, step resource.Quantity) resource.Quanti
 	return *resource.NewQuantity(roundedValue, quantity.Format)
 }
 
-func (r *WorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context, targetResource client.Object, newResources map[string]*corev1.ResourceRequirements) error {
+func resourceRequirementsEqual(a, b *corev1.ResourceRequirements) bool {
+	return a.Requests.Cpu().Equal(*b.Requests.Cpu()) &&
+		a.Requests.Memory().Equal(*b.Requests.Memory()) &&
+		a.Limits.Cpu().Equal(*b.Limits.Cpu()) &&
+		a.Limits.Memory().Equal(*b.Limits.Memory())
+}
+
+func (r *WorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context, targetResource client.Object, newResources map[string]*corev1.ResourceRequirements) (bool, error) {
+	needsUpdate := false
+
 	updateContainers := func(containers []corev1.Container) {
 		for _, container := range containers {
 			if recommendedResources, ok := newResources[container.Name]; ok {
-				recommendedResources.Requests.DeepCopyInto(&container.Resources.Requests)
+				if !resourceRequirementsEqual(&container.Resources, recommendedResources) {
+					recommendedResources.Requests.DeepCopyInto(&container.Resources.Requests)
+					recommendedResources.Limits.DeepCopyInto(&container.Resources.Limits)
+					needsUpdate = true
+				}
 			}
 		}
 	}
@@ -111,15 +125,16 @@ func (r *WorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context,
 	case *appsv1.DaemonSet:
 		updateContainers(resource.Spec.Template.Spec.Containers)
 	default:
-		return fmt.Errorf("unsupported target resource type: %T", targetResource)
+		return false, errors.NewBadRequest(fmt.Sprintf("unsupported target resource type: %T", targetResource))
 	}
 
-	if err := r.Update(ctx, targetResource); err != nil {
-		return fmt.Errorf("failed to update target resource: %w", err)
+	if needsUpdate {
+		if err := r.Update(ctx, targetResource); err != nil {
+			return false, errors.NewInternalError(fmt.Errorf("failed to update target resource: %w", err))
+		}
 	}
-	return nil
+	return needsUpdate, nil
 }
-
 func (r *WorkloadAutoscalerReconciler) updateAnnotations(ctx context.Context, targetResource client.Object) error {
 	annotations := targetResource.GetAnnotations()
 	if annotations == nil {
