@@ -16,11 +16,13 @@ This document outlines the detailed steps required to implement the WorkloadAuto
   - [x] Update the target resource
   - [x] Force pod recreation by updating the `spec.template.metadata.annotations` with a timestamp or unique value, e.g., `workloadautoscaler.kubernetes.io/restartedAt: <current-timestamp>`
   - [x] Add ArgoCD annotation to the target resource to prevent conflicts:
+
     ```yaml
     metadata:
       annotations:
         argocd.argoproj.io/compare-options: IgnoreResourceRequests
     ```
+
 - [x] If the update is not allowed right now, keep the recommended value and retry until allowed and successful
 - [x] Record progress (retry attempts and success or failure) statuses on the WorkloadAutoscaler object status
 - [x] Update WorkloadAutoscaler status
