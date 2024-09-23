@@ -82,15 +82,9 @@ func (r *WorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.R
 			return ctrl.Result{}, err
 		}
 
-		// Force pod recreation by updating the spec.template.metadata.annotations with a timestamp
-		if err = r.forcePodRecreation(ctx, targetResource); err != nil {
-			logger.Error(err, "Failed to force pod recreation")
-			return ctrl.Result{}, err
-		}
-
-		// Add ArgoCD annotation to the target resource to prevent conflicts
-		if err := r.addArgoCDAnnotation(ctx, targetResource); err != nil {
-			logger.Error(err, "Failed to add ArgoCD annotation")
+		// Update annotations to force pod recreation and add GitOps conflict avoidance
+		if err = r.updateAnnotations(ctx, targetResource); err != nil {
+			logger.Error(err, "Failed to update annotations")
 			return ctrl.Result{}, err
 		}
 	}

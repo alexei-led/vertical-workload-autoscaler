@@ -120,24 +120,12 @@ func (r *WorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context,
 	return nil
 }
 
-func (r *WorkloadAutoscalerReconciler) forcePodRecreation(ctx context.Context, targetResource client.Object) error {
+func (r *WorkloadAutoscalerReconciler) updateAnnotations(ctx context.Context, targetResource client.Object) error {
 	annotations := targetResource.GetAnnotations()
 	if annotations == nil {
 		annotations = make(map[string]string)
 	}
 	annotations["workloadautoscaler.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
-	targetResource.SetAnnotations(annotations)
-	if err := r.Update(ctx, targetResource); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r *WorkloadAutoscalerReconciler) addArgoCDAnnotation(ctx context.Context, targetResource client.Object) error {
-	annotations := targetResource.GetAnnotations()
-	if annotations == nil {
-		annotations = make(map[string]string)
-	}
 	annotations["argocd.argoproj.io/compare-options"] = "IgnoreResourceRequests"
 	annotations["fluxcd.io/ignore"] = "true"
 	targetResource.SetAnnotations(annotations)
