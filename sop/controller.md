@@ -26,6 +26,7 @@ This document outlines the detailed steps required to implement the WorkloadAuto
 - [x] If the update is not allowed right now, keep the recommended value and retry until allowed and successful
 - [x] Record progress (retry attempts and success or failure) statuses on the WorkloadAutoscaler object status
 - [x] Update WorkloadAutoscaler status
+- [x] Implement support for delayed updates based on allowed update windows, update frequency, and grace period, considering timezones. If no allowed update windows are set, update immediately.
 
 ## 2. Implement Helper Functions
 
