@@ -20,23 +20,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // WorkloadAutoscalerSpec defines the desired state of WorkloadAutoscaler
 type WorkloadAutoscalerSpec struct {
-	Target               TargetSpec       `json:"target"`
 	VPAReference         VPAReference     `json:"vpaReference"`
 	UpdateFrequency      Duration         `json:"updateFrequency"`
 	AllowedUpdateWindows []UpdateWindow   `json:"allowedUpdateWindows"`
 	StepSize             ResourceRequests `json:"stepSize"`
 	GracePeriod          Duration         `json:"gracePeriod"`
-}
-
-// TargetSpec defines the target resources for the autoscaler
-type TargetSpec struct {
-	Selector          *metav1.LabelSelector `json:"selector,omitempty"`
-	ResourceReference *ResourceReference    `json:"resourceReference,omitempty"`
+	// +kubebuilder:validation:Enum=Burstable;Guaranteed
+	// +kubebuilder:default=Guaranteed
+	QualityOfService string `json:"qualityOfService"`
+	AvoidCPULimit    bool   `json:"avoidCPULimit,omitempty"`
 }
 
 // VPAReference defines the reference to the VerticalPodAutoscaler
