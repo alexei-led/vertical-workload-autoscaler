@@ -6,17 +6,18 @@ This document outlines the steps to define the WorkloadAutoscaler Custom Resourc
 
 - [x] Open the file `api/v1alpha1/workloadautoscaler_types.go`
 - [x] Update the `WorkloadAutoscalerSpec` struct:
-  - [x] Add a field for the target resource (using selectors or direct references)
   - [x] Add a field for the VPA reference
   - [x] Add a field for update frequency
   - [x] Add a field for allowed update windows
   - [x] Add a field for step size
   - [x] Add a field for grace period
+  - [x] Add a field for quality of service
+  - [x] Add a field to avoid CPU limit
 - [x] Update the `WorkloadAutoscalerStatus` struct:
   - [x] Add fields to track the current state of the autoscaler
   - [x] Add detailed status fields:
     - [x] CurrentStatus
-    - [x] TargetedResource
+    - [x] TargetResource
     - [x] LastUpdated
     - [x] CurrentRequests
     - [x] RecommendedRequests
@@ -26,6 +27,7 @@ This document outlines the steps to define the WorkloadAutoscaler Custom Resourc
     - [x] Errors
     - [x] UpdateCount
     - [x] Conditions
+    - [x] QualityOfService
 - [x] Add any necessary comments for kubebuilder markers
 
 ## 2. Generate CRD Manifests and Code
