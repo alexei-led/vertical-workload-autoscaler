@@ -97,20 +97,20 @@ func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, re
 	if conflicts["cpu"] || conflicts["memory"] {
 		if conflicts["cpu"] && conflicts["memory"] {
 			logger.Info("HPA conflict detected for both CPU and memory, skipping VPA recommendations")
-			if err := r.updateStatusWithConflict(ctx, wa, "CPU and memory"); err != nil {
+			if err = r.updateStatusWithConflict(ctx, wa, "CPU and memory"); err != nil {
 				logger.Error(err, "Failed to update status with conflict")
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{}, nil
 		} else if conflicts["cpu"] {
 			logger.Info("HPA conflict detected for CPU, skipping VPA recommendations for CPU")
-			if err := r.updateStatusWithConflict(ctx, wa, "CPU"); err != nil {
+			if err = r.updateStatusWithConflict(ctx, wa, "CPU"); err != nil {
 				logger.Error(err, "Failed to update status with conflict")
 				return ctrl.Result{}, err
 			}
 		} else if conflicts["memory"] {
 			logger.Info("HPA conflict detected for memory, skipping VPA recommendations for memory")
-			if err := r.updateStatusWithConflict(ctx, wa, "memory"); err != nil {
+			if err = r.updateStatusWithConflict(ctx, wa, "memory"); err != nil {
 				logger.Error(err, "Failed to update status with conflict")
 				return ctrl.Result{}, err
 			}
