@@ -38,8 +38,7 @@ type VerticalWorkloadAutoscalerSpec struct {
 
 // VPAReference defines the reference to the VerticalPodAutoscaler
 type VPAReference struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
+	Name string `json:"name"`
 }
 
 // ResourceReference defines a reference to a Kubernetes resource
@@ -47,7 +46,6 @@ type ResourceReference struct {
 	APIVersion string `json:"apiVersion"`
 	Kind       string `json:"kind"`
 	Name       string `json:"name"`
-	Namespace  string `json:"namespace"`
 }
 
 // UpdateWindow defines a time window for allowed updates
@@ -77,6 +75,7 @@ type VerticalWorkloadAutoscalerStatus struct {
 	UpdateCount         int32                                  `json:"updateCount,omitempty"`
 	Conditions          []metav1.Condition                     `json:"conditions,omitempty"`
 	QualityOfService    string                                 `json:"qualityOfService,omitempty"`
+	Conflicts           []Conflict                             `json:"conflicts,omitempty"`
 }
 
 // ResourceRequests defines the resource requests for CPU and Memory
@@ -87,6 +86,7 @@ type ResourceRequests struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:shortName=vwa
 
 // VerticalWorkloadAutoscaler is the Schema for the VerticalWorkloadAutoscalers API
 type VerticalWorkloadAutoscaler struct {
@@ -108,4 +108,10 @@ type VerticalWorkloadAutoscalerList struct {
 
 func init() {
 	SchemeBuilder.Register(&VerticalWorkloadAutoscaler{}, &VerticalWorkloadAutoscalerList{})
+}
+
+type Conflict struct {
+	Resource     string `json:"resource"`
+	ConflictWith string `json:"conflictWith"`
+	Reason       string `json:"reason,omitempty"`
 }

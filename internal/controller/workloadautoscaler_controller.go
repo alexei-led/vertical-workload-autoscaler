@@ -20,6 +20,7 @@ import (
 	"context"
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
@@ -40,6 +41,7 @@ type VerticalWorkloadAutoscalerReconciler struct {
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers/finalizers,verbs=update
+// +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -75,7 +77,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, re
 	}
 
 	// Fetch the target resource from the VPA configuration
-	targetResource, err := r.fetchTargetResource(ctx, vpa)
+	targetResource, err := r.fetchTargetResource(ctx, wa.Namespace, vpa)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("Target resource not found. Ignoring since object must be deleted.")
@@ -83,6 +85,36 @@ func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, re
 		}
 		logger.Error(err, "Failed to fetch target resource")
 		return ctrl.Result{}, err
+	}
+
+	// Detect HPA conflicts
+	conflicts, err := r.detectHPAConflicts(ctx, wa, targetResource)
+	if err != nil {
+		logger.Error(err, "Failed to detect HPA conflicts")
+		return ctrl.Result{}, err
+	}
+
+	if conflicts["cpu"] || conflicts["memory"] {
+		if conflicts["cpu"] && conflicts["memory"] {
+			logger.Info("HPA conflict detected for both CPU and memory, skipping VPA recommendations")
+			if err := r.updateStatusWithConflict(ctx, wa, "CPU and memory"); err != nil {
+				logger.Error(err, "Failed to update status with conflict")
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{}, nil
+		} else if conflicts["cpu"] {
+			logger.Info("HPA conflict detected for CPU, skipping VPA recommendations for CPU")
+			if err := r.updateStatusWithConflict(ctx, wa, "CPU"); err != nil {
+				logger.Error(err, "Failed to update status with conflict")
+				return ctrl.Result{}, err
+			}
+		} else if conflicts["memory"] {
+			logger.Info("HPA conflict detected for memory, skipping VPA recommendations for memory")
+			if err := r.updateStatusWithConflict(ctx, wa, "memory"); err != nil {
+				logger.Error(err, "Failed to update status with conflict")
+				return ctrl.Result{}, err
+			}
+		}
 	}
 
 	// Calculate new resource values based on StepSize configuration
@@ -127,6 +159,10 @@ func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager
 			&vpav1.VerticalPodAutoscaler{},
 			handler.EnqueueRequestsFromMapFunc(r.findObjectsForVPA),
 			builder.WithPredicates(VPARecommendationChangedPredicate{})).
+		Watches(
+			&autoscalingv2.HorizontalPodAutoscaler{},
+			&handler.EnqueueRequestForObject{},
+		).
 		Complete(r); err != nil {
 		log.Log.Error(err, "Failed to setup controller with manager")
 		return err
@@ -146,7 +182,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) findObjectsForVPA(_ context.Conte
 		return requests
 	}
 	for _, wa := range waList.Items {
-		if wa.Spec.VPAReference.Name == vpa.Name && wa.Spec.VPAReference.Namespace == vpa.Namespace {
+		if wa.Spec.VPAReference.Name == vpa.Name {
 			requests = append(requests, reconcile.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: wa.Namespace,
