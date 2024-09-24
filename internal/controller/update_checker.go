@@ -76,5 +76,5 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateStatus(ctx context.Context,
 func (r *VerticalWorkloadAutoscalerReconciler) updateStatusOnError(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, err error) {
 	wa.Status.CurrentStatus = "Error"
 	wa.Status.Errors = append(wa.Status.Errors, err.Error())
-	r.Status().Update(ctx, wa)
+	r.Status().Update(ctx, wa) // nolint:errcheck
 }
