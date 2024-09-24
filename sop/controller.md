@@ -31,13 +31,13 @@ This document outlines the steps required to implement the VerticalWorkloadAutos
 
 ### 1.2 HPA Conflict Resolution
 
-- [ ] Detect conflicting `HPA` objects:
-  - [ ] Watch for `HPA` creation, updates, and deletions.
-  - [ ] List all `HPA` objects in the same namespace as the target resource and filter based on those targeting the same resource (e.g., `Deployment`, `StatefulSet`).
-  - [ ] Identify HPAs that overlap with VPA on scaling metrics (CPU or memory).
-- [ ] Skip conflicting VPA recommendations:
-  - [ ] Skip applying VPA recommendations if a conflicting HPA is detected (e.g., HPA scaling CPU or memory).
-  - [ ] Log or update the `VerticalWorkloadAutoscaler` status to indicate that VPA recommendations were skipped due to HPA conflict:
+- [x] Detect conflicting `HPA` objects:
+  - [x] Watch for `HPA` creation, updates, and deletions.
+  - [x] List all `HPA` objects in the same namespace as the target resource and filter based on those targeting the same resource (e.g., `Deployment`, `StatefulSet`).
+  - [x] Identify HPAs that overlap with VPA on scaling metrics (CPU or memory).
+- [x] Skip conflicting VPA recommendations:
+  - [x] Skip applying VPA recommendations if a conflicting HPA is detected (e.g., HPA scaling CPU or memory).
+  - [x] Log or update the `VerticalWorkloadAutoscaler` status to indicate that VPA recommendations were skipped due to HPA conflict:
 
     ```yaml
     conflicts:
@@ -74,12 +74,12 @@ This document outlines the steps required to implement the VerticalWorkloadAutos
 
 ### 2.4 HPA Conflict Detection Functions
 
-- [ ] Create `internal/controller/hpa.go`
-- [ ] Implement functions to:
-  - [ ] List HPAs in the same namespace as the target resource.
-  - [ ] Detect conflicts between HPAs and VPAs.
-  - [ ] Skip conflicting VPA recommendations when conflicts are detected.
-  - [ ] Update the `VerticalWorkloadAutoscaler` status with conflict information.
+- [x] Create `internal/controller/hpa.go`
+- [x] Implement functions to:
+  - [x] List HPAs in the same namespace as the target resource.
+  - [x] Detect conflicts between HPAs and VPAs.
+  - [x] Skip conflicting VPA recommendations when conflicts are detected.
+  - [x] Update the `VerticalWorkloadAutoscaler` status with conflict information.
 
 ## 3. Testing
 
@@ -90,7 +90,7 @@ This document outlines the steps required to implement the VerticalWorkloadAutos
 
 ### 3.2 Unit Tests for Helper Functions
 
-- [ ] Create `internal/controller/vpa_test.go` for VPA interaction functions.
+- [x] Create `internal/controller/vpa_test.go` for VPA interaction functions.
 - [ ] Create `internal/controller/resources_test.go` for resource calculation functions.
 - [ ] Create `internal/controller/update_checker_test.go` for update checker functions.
 - [ ] Create `internal/controller/hpa_test.go` for HPA conflict detection functions.
