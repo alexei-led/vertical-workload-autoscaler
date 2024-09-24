@@ -7,6 +7,7 @@ import (
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // listHPAs lists all HPAs in the same namespace as the target resource
@@ -52,6 +53,26 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateStatusWithConflict(ctx cont
 	})
 	if err := r.Status().Update(ctx, &wa); err != nil {
 		return fmt.Errorf("failed to update VerticalWorkloadAutoscaler status with conflict: %w", err)
+	}
+	return nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) handleHPAConflicts(ctx context.Context, wa vwav1.VerticalWorkloadAutoscaler, conflicts map[string]bool) error {
+	logger := log.FromContext(ctx)
+	if conflicts["cpu"] || conflicts["memory"] {
+		var conflictType string
+		if conflicts["cpu"] && conflicts["memory"] {
+			conflictType = "CPU and memory"
+		} else if conflicts["cpu"] {
+			conflictType = "CPU"
+		} else if conflicts["memory"] {
+			conflictType = "memory"
+		}
+		logger.Info("HPA conflict detected", "Type", conflictType)
+		if err := r.updateStatusWithConflict(ctx, wa, conflictType); err != nil {
+			return err
+		}
+		return nil
 	}
 	return nil
 }
