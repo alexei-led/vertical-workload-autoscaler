@@ -125,7 +125,7 @@ func (r *WorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		For(&autoscalingk8siov1alpha1.WorkloadAutoscaler{}).
 		Watches(
 			&vpav1.VerticalPodAutoscaler{},
-			handler.EnqueueRequestsFromMapFunc(r.findObjectsFoVPA),
+			handler.EnqueueRequestsFromMapFunc(r.findObjectsForVPA),
 			builder.WithPredicates(VPARecommendationChangedPredicate{})).
 		Complete(r); err != nil {
 		log.Log.Error(err, "Failed to setup controller with manager")
@@ -134,7 +134,7 @@ func (r *WorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	return nil
 }
 
-func (r *WorkloadAutoscalerReconciler) findObjectsFoVPA(_ context.Context, obj client.Object) []reconcile.Request {
+func (r *WorkloadAutoscalerReconciler) findObjectsForVPA(_ context.Context, obj client.Object) []reconcile.Request {
 	var requests []reconcile.Request
 	var waList autoscalingk8siov1alpha1.WorkloadAutoscalerList
 	if err := r.List(context.Background(), &waList); err != nil {
