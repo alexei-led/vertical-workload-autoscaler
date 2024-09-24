@@ -66,6 +66,10 @@ func (r *WorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Fetch the associated VPA object
 	vpa, err := r.fetchVPA(ctx, wa)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("VPA not found. Ignoring since object must be deleted.")
+			return ctrl.Result{}, nil
+		}
 		logger.Error(err, "Failed to fetch VPA")
 		return ctrl.Result{}, err
 	}
@@ -73,6 +77,10 @@ func (r *WorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Fetch the target resource from the VPA configuration
 	targetResource, err := r.fetchTargetResource(ctx, vpa)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("Target resource not found. Ignoring since object must be deleted.")
+			return ctrl.Result{}, nil
+		}
 		logger.Error(err, "Failed to fetch target resource")
 		return ctrl.Result{}, err
 	}
