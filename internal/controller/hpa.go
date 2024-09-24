@@ -19,7 +19,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) listHPAs(ctx context.Context, nam
 }
 
 // detectHPAConflicts detects conflicts between HPAs and VPAs
-func (r *VerticalWorkloadAutoscalerReconciler) detectHPAConflicts(ctx context.Context, wa vwav1.VerticalWorkloadAutoscaler, targetResource client.Object) (map[string]bool, error) {
+func (r *VerticalWorkloadAutoscalerReconciler) detectHPAConflicts(ctx context.Context, targetResource client.Object) (map[string]bool, error) {
 	conflicts := map[string]bool{"cpu": false, "memory": false}
 	hpas, err := r.listHPAs(ctx, targetResource.GetNamespace())
 	if err != nil {

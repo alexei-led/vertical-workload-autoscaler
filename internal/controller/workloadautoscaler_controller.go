@@ -77,7 +77,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, re
 	}
 
 	// Fetch the target resource from the VPA configuration
-	targetResource, err := r.fetchTargetResource(ctx, wa.Namespace, vpa)
+	targetResource, err := r.fetchTargetResource(ctx, vpa)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("Target resource not found. Ignoring since object must be deleted.")
@@ -88,7 +88,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, re
 	}
 
 	// Detect HPA conflicts
-	conflicts, err := r.detectHPAConflicts(ctx, wa, targetResource)
+	conflicts, err := r.detectHPAConflicts(ctx, targetResource)
 	if err != nil {
 		logger.Error(err, "Failed to detect HPA conflicts")
 		return ctrl.Result{}, err

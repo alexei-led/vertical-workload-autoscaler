@@ -79,8 +79,7 @@ func TestFetchVPA(t *testing.T) {
 	wa := vwav1.VerticalWorkloadAutoscaler{
 		Spec: vwav1.VerticalWorkloadAutoscalerSpec{
 			VPAReference: vwav1.VPAReference{
-				Name:      "test-vpa",
-				Namespace: "default",
+				Name: "test-vpa",
 			},
 		},
 		ObjectMeta: metav1.ObjectMeta{
