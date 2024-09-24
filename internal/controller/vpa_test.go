@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	autoscalingk8siov1alpha1 "github.com/alexei-led/workload-autoscaler/api/v1alpha1"
+	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -71,14 +71,14 @@ func TestFetchVPA(t *testing.T) {
 	}
 
 	client := fake.NewClientBuilder().WithScheme(s).WithObjects(vpa).Build()
-	r := &WorkloadAutoscalerReconciler{
+	r := &VerticalWorkloadAutoscalerReconciler{
 		Client: client,
 		Scheme: s,
 	}
 
-	wa := autoscalingk8siov1alpha1.WorkloadAutoscaler{
-		Spec: autoscalingk8siov1alpha1.WorkloadAutoscalerSpec{
-			VPAReference: autoscalingk8siov1alpha1.VPAReference{
+	wa := vwav1.VerticalWorkloadAutoscaler{
+		Spec: vwav1.VerticalWorkloadAutoscalerSpec{
+			VPAReference: vwav1.VPAReference{
 				Name:      "test-vpa",
 				Namespace: "default",
 			},

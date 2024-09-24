@@ -23,8 +23,8 @@ import (
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// WorkloadAutoscalerSpec defines the desired state of WorkloadAutoscaler
-type WorkloadAutoscalerSpec struct {
+// VerticalWorkloadAutoscalerSpec defines the desired state of VerticalWorkloadAutoscaler
+type VerticalWorkloadAutoscalerSpec struct {
 	VPAReference         VPAReference     `json:"vpaReference"`
 	UpdateFrequency      Duration         `json:"updateFrequency"`
 	AllowedUpdateWindows []UpdateWindow   `json:"allowedUpdateWindows"`
@@ -63,8 +63,8 @@ type Duration struct {
 	Duration string `json:"duration"`
 }
 
-// WorkloadAutoscalerStatus defines the observed state of WorkloadAutoscaler
-type WorkloadAutoscalerStatus struct {
+// VerticalWorkloadAutoscalerStatus defines the observed state of VerticalWorkloadAutoscaler
+type VerticalWorkloadAutoscalerStatus struct {
 	CurrentStatus       string                                 `json:"currentStatus,omitempty"`
 	TargetResource      ResourceReference                      `json:"targetResource,omitempty"`
 	LastUpdated         metav1.Time                            `json:"lastUpdated,omitempty"`
@@ -88,24 +88,24 @@ type ResourceRequests struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// WorkloadAutoscaler is the Schema for the workloadautoscalers API
-type WorkloadAutoscaler struct {
+// VerticalWorkloadAutoscaler is the Schema for the VerticalWorkloadAutoscalers API
+type VerticalWorkloadAutoscaler struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   WorkloadAutoscalerSpec   `json:"spec,omitempty"`
-	Status WorkloadAutoscalerStatus `json:"status,omitempty"`
+	Spec   VerticalWorkloadAutoscalerSpec   `json:"spec,omitempty"`
+	Status VerticalWorkloadAutoscalerStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// WorkloadAutoscalerList contains a list of WorkloadAutoscaler
-type WorkloadAutoscalerList struct {
+// VerticalWorkloadAutoscalerList contains a list of VerticalWorkloadAutoscaler
+type VerticalWorkloadAutoscalerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []WorkloadAutoscaler `json:"items"`
+	Items           []VerticalWorkloadAutoscaler `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&WorkloadAutoscaler{}, &WorkloadAutoscalerList{})
+	SchemeBuilder.Register(&VerticalWorkloadAutoscaler{}, &VerticalWorkloadAutoscalerList{})
 }

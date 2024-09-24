@@ -25,8 +25,8 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	autoscalingk8siov1alpha1 "github.com/alexei-led/workload-autoscaler/api/v1alpha1"
-	"github.com/alexei-led/workload-autoscaler/internal/controller" //nolint:typecheck
+	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
+	"github.com/alexei-led/vertical-workload-autoscaler/internal/controller" //nolint:typecheck
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -46,7 +46,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(autoscalingk8siov1alpha1.AddToScheme(scheme))
+	utilruntime.Must(vwav1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -131,11 +131,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.WorkloadAutoscalerReconciler{
+	if err = (&controller.VerticalWorkloadAutoscalerReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "WorkloadAutoscaler")
+		setupLog.Error(err, "unable to create controller", "controller", "VerticalWorkloadAutoscaler")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

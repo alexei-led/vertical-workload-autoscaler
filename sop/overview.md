@@ -1,10 +1,10 @@
-# WorkloadAutoscaler Controller Implementation Overview
+# VerticalWorkloadAutoscaler Controller Implementation Overview
 
-This document outlines the steps required to implement a working version of the WorkloadAutoscaler controller.
+This document outlines the steps required to implement a working version of the VerticalWorkloadAutoscaler controller.
 
-## 1. Define the WorkloadAutoscaler Custom Resource Definition (CRD)
+## 1. Define the VerticalWorkloadAutoscaler Custom Resource Definition (CRD)
 
-- [x] Define the WorkloadAutoscaler spec and status in `api/v1alpha1/workloadautoscaler_types.go`
+- [x] Define the VerticalWorkloadAutoscaler spec and status in `api/v1alpha1/workloadautoscaler_types.go`
 - [x] Ensure the spec includes fields for:
   - [x] Target resource (using selectors or direct references)
   - [x] VPA reference
@@ -53,12 +53,12 @@ Create test files in the `internal/controller/` directory:
 
 ## 9. Write integration tests
 
-- [ ] Update `test/e2e/e2e_test.go` to include integration tests for the WorkloadAutoscaler controller
+- [ ] Update `test/e2e/e2e_test.go` to include integration tests for the VerticalWorkloadAutoscaler controller
 
 ## 10. Update project documentation
 
 - [ ] Update `README.md` with project description and usage instructions
-- [ ] Create example WorkloadAutoscaler CR in `config/samples/`
+- [ ] Create example VerticalWorkloadAutoscaler CR in `config/samples/`
 
 ## 11. Build and test
 

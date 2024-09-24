@@ -1,10 +1,10 @@
-# workload-autoscaler
+# vertical-workload-autoscaler
 
-WorkloadAutoscaler is a Kubernetes-native solution designed to enhance Vertical Pod Autoscaler (VPA) functionality by providing configurable and controlled resource updates for workloads. It offers granular control over update windows, step sizes, and compatibility with Horizontal Pod Autoscalers (HPA), KEDA, StatefulSets, and DaemonSets. The solution avoids immediate pod evictions, ensuring smooth resource adjustments for improved performance and cost efficiency.
+VerticalWorkloadAutoscaler (VWA) is a Kubernetes-native solution designed to enhance Vertical Pod Autoscaler (VPA) functionality by providing configurable and controlled resource updates for workloads. It offers granular control over update windows, step sizes, and compatibility with Horizontal Pod Autoscalers (HPA), KEDA, StatefulSets, and DaemonSets. The solution avoids immediate pod evictions, ensuring smooth resource adjustments for improved performance and cost efficiency.
 
 ## Description
 
-WorkloadAutoscaler extends the capabilities of the Vertical Pod Autoscaler (VPA) by introducing more control over how and when resource updates are applied to your workloads. This includes defining specific update windows, step sizes for resource adjustments, and ensuring compatibility with other Kubernetes components like HPA, KEDA, StatefulSets, and DaemonSets. This approach helps in maintaining performance and cost efficiency without causing disruptions due to immediate pod evictions.
+VerticalWorkloadAutoscaler extends the capabilities of the Vertical Pod Autoscaler (VPA) by introducing more control over how and when resource updates are applied to your workloads. This includes defining specific update windows, step sizes for resource adjustments, and ensuring compatibility with other Kubernetes components like HPA, KEDA, StatefulSets, and DaemonSets. This approach helps in maintaining performance and cost efficiency without causing disruptions due to immediate pod evictions.
 
 ## Key Features
 
@@ -32,7 +32,7 @@ WorkloadAutoscaler extends the capabilities of the Vertical Pod Autoscaler (VPA)
 **Build and push your image to the location specified by `IMG`:**
 
 ```sh
-make docker-build docker-push IMG=<some-registry>/workload-autoscaler:tag
+make docker-build docker-push IMG=<some-registry>/vertical-workload-autoscaler:tag
 ```
 
 **NOTE:** This image ought to be published in the personal registry you specified.
@@ -48,7 +48,7 @@ make install
 **Deploy the Manager to the cluster with the image specified by `IMG`:**
 
 ```sh
-make deploy IMG=<some-registry>/workload-autoscaler:tag
+make deploy IMG=<some-registry>/vertical-workload-autoscaler:tag
 ```
 
 > **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
@@ -90,7 +90,7 @@ Following are the steps to build the installer and distribute this project to us
 1. Build the installer for the image built and published in the registry:
 
 ```sh
-make build-installer IMG=<some-registry>/workload-autoscaler:tag
+make build-installer IMG=<some-registry>/vertical-workload-autoscaler:tag
 ```
 
 NOTE: The makefile target mentioned above generates an 'install.yaml'
@@ -103,12 +103,12 @@ its dependencies.
 Users can just run kubectl apply -f <URL for YAML BUNDLE> to install the project, i.e.:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/workload-autoscaler/<tag or branch>/dist/install.yaml
+kubectl apply -f https://raw.githubusercontent.com/<org>/vertical-workload-autoscaler/<tag or branch>/dist/install.yaml
 ```
 
 ## Contributing
 
-We welcome contributions to the WorkloadAutoscaler project. Please follow these steps to contribute:
+We welcome contributions to the VerticalWorkloadAutoscaler project. Please follow these steps to contribute:
 
 1. Fork the repository.
 2. Create a new branch (`git checkout -b feature-branch`).

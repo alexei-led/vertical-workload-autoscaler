@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.1
-  name: workloadautoscalers.autoscaling.k8s.io
+  name: verticalworkloadautoscalers.autoscaling.k8s.io
 spec:
   group: autoscaling.k8s.io
   names:
-    kind: WorkloadAutoscaler
-    listKind: WorkloadAutoscalerList
-    plural: workloadautoscalers
-    singular: workloadautoscaler
+    kind: VerticalWorkloadAutoscaler
+    listKind: VerticalWorkloadAutoscalerList
+    plural: verticalworkloadautoscalers
+    singular: verticalworkloadautoscaler
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: WorkloadAutoscaler is the Schema for the workloadautoscalers
+        description: VerticalWorkloadAutoscaler is the Schema for the VerticalWorkloadAutoscalers
           API
         properties:
           apiVersion:
@@ -38,7 +38,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: WorkloadAutoscalerSpec defines the desired state of WorkloadAutoscaler
+            description: VerticalWorkloadAutoscalerSpec defines the desired state
+              of VerticalWorkloadAutoscaler
             properties:
               allowedUpdateWindows:
                 items:
@@ -112,7 +113,8 @@ spec:
             - vpaReference
             type: object
           status:
-            description: WorkloadAutoscalerStatus defines the observed state of WorkloadAutoscaler
+            description: VerticalWorkloadAutoscalerStatus defines the observed state
+              of VerticalWorkloadAutoscaler
             properties:
               conditions:
                 items:

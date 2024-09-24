@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	autoscalingk8siov1alpha1 "github.com/alexei-led/workload-autoscaler/api/v1alpha1"
+	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *WorkloadAutoscalerReconciler) fetchTargetResource(ctx context.Context, vpa *vpav1.VerticalPodAutoscaler) (client.Object, error) {
+func (r *VerticalWorkloadAutoscalerReconciler) fetchTargetResource(ctx context.Context, vpa *vpav1.VerticalPodAutoscaler) (client.Object, error) {
 	var targetResource client.Object
 
 	switch vpa.Spec.TargetRef.Kind {
@@ -40,7 +40,7 @@ func (r *WorkloadAutoscalerReconciler) fetchTargetResource(ctx context.Context, 
 	return targetResource, nil
 }
 
-func (r *WorkloadAutoscalerReconciler) calculateNewResources(wa autoscalingk8siov1alpha1.WorkloadAutoscaler, recommendations *vpav1.RecommendedPodResources) map[string]*corev1.ResourceRequirements {
+func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.VerticalWorkloadAutoscaler, recommendations *vpav1.RecommendedPodResources) map[string]*corev1.ResourceRequirements {
 	newResources := make(map[string]*corev1.ResourceRequirements)
 
 	for _, containerRec := range recommendations.ContainerRecommendations {
@@ -98,7 +98,7 @@ func resourceRequirementsEqual(a, b *corev1.ResourceRequirements) bool {
 		a.Limits.Memory().Equal(*b.Limits.Memory())
 }
 
-func (r *WorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context, targetResource client.Object, newResources map[string]*corev1.ResourceRequirements) (bool, error) {
+func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context, targetResource client.Object, newResources map[string]*corev1.ResourceRequirements) (bool, error) {
 	needsUpdate := false
 
 	updateContainers := func(containers []corev1.Container) {
@@ -135,12 +135,12 @@ func (r *WorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context,
 	}
 	return needsUpdate, nil
 }
-func (r *WorkloadAutoscalerReconciler) updateAnnotations(ctx context.Context, targetResource client.Object) error {
+func (r *VerticalWorkloadAutoscalerReconciler) updateAnnotations(ctx context.Context, targetResource client.Object) error {
 	annotations := targetResource.GetAnnotations()
 	if annotations == nil {
 		annotations = make(map[string]string)
 	}
-	annotations["workloadautoscaler.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
+	annotations["verticalworkloadautoscaler.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
 	annotations["argocd.argoproj.io/compare-options"] = "IgnoreResourceRequests"
 	annotations["fluxcd.io/ignore"] = "true"
 	targetResource.SetAnnotations(annotations)

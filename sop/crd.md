@@ -1,11 +1,11 @@
-# Defining and Generating the WorkloadAutoscaler CRD
+# Defining and Generating the VerticalWorkloadAutoscaler CRD
 
-This document outlines the steps to define the WorkloadAutoscaler Custom Resource Definition (CRD) and generate the necessary manifests and code.
+This document outlines the steps to define the VerticalWorkloadAutoscaler Custom Resource Definition (CRD) and generate the necessary manifests and code.
 
-## 1. Define the WorkloadAutoscaler CRD
+## 1. Define the VerticalWorkloadAutoscaler CRD
 
 - [x] Open the file `api/v1alpha1/workloadautoscaler_types.go`
-- [x] Update the `WorkloadAutoscalerSpec` struct:
+- [x] Update the `VerticalWorkloadAutoscaler` struct:
   - [x] Add a field for the VPA reference
   - [x] Add a field for update frequency
   - [x] Add a field for allowed update windows
@@ -13,7 +13,7 @@ This document outlines the steps to define the WorkloadAutoscaler Custom Resourc
   - [x] Add a field for grace period
   - [x] Add a field for quality of service
   - [x] Add a field to avoid CPU limit
-- [x] Update the `WorkloadAutoscalerStatus` struct:
+- [x] Update the `VerticalWorkloadAutoscaler` struct:
   - [x] Add fields to track the current state of the autoscaler
   - [x] Add detailed status fields:
     - [x] CurrentStatus
@@ -59,7 +59,7 @@ make generate
 ## 4. Update Sample CR
 
 - [x] Open the file `config/samples/autoscaling.k8s.io_v1alpha1_workloadautoscaler.yaml`
-- [x] Update the sample CR to include example values for all fields defined in the `WorkloadAutoscalerSpec`
+- [x] Update the sample CR to include example values for all fields defined in the `VerticalWorkloadAutoscaler`
 
 ## 5. Commit Changes
 

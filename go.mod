@@ -1,4 +1,4 @@
-module github.com/alexei-led/workload-autoscaler
+module github.com/alexei-led/vertical-workload-autoscaler
 
 go 1.22.0
 

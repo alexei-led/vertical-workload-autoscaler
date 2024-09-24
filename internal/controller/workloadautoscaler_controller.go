@@ -19,7 +19,7 @@ package controller
 import (
 	"context"
 
-	autoscalingk8siov1alpha1 "github.com/alexei-led/workload-autoscaler/api/v1alpha1"
+	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
@@ -31,29 +31,29 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-// WorkloadAutoscalerReconciler reconciles a WorkloadAutoscaler object
-type WorkloadAutoscalerReconciler struct {
+// VerticalWorkloadAutoscalerReconciler reconciles a VerticalWorkloadAutoscaler object
+type VerticalWorkloadAutoscalerReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=workloadautoscalers,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=workloadautoscalers/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=workloadautoscalers/finalizers,verbs=update
+// +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-func (r *WorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the WorkloadAutoscaler object
-	var wa autoscalingk8siov1alpha1.WorkloadAutoscaler
+	// Fetch the VerticalWorkloadAutoscaler object
+	var wa vwav1.VerticalWorkloadAutoscaler
 	if err := r.Get(ctx, req.NamespacedName, &wa); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("WorkloadAutoscaler resource not found. Ignoring since object must be deleted.")
+			logger.Info("VerticalWorkloadAutoscaler resource not found. Ignoring since object must be deleted.")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get WorkloadAutoscaler")
+		logger.Error(err, "Failed to get VerticalWorkloadAutoscaler")
 		return ctrl.Result{}, err
 	}
 
@@ -103,26 +103,26 @@ func (r *WorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	}
 
-	// Record progress statuses on the WorkloadAutoscaler object status
+	// Record progress statuses on the VerticalWorkloadAutoscaler object status
 	if err = r.recordProgress(ctx, wa); err != nil {
 		logger.Error(err, "Failed to record progress")
 		return ctrl.Result{}, err
 	}
 
-	// Update WorkloadAutoscaler status
+	// Update VerticalWorkloadAutoscaler status
 	if err = r.updateStatus(ctx, wa); err != nil {
-		logger.Error(err, "Failed to update WorkloadAutoscaler status")
+		logger.Error(err, "Failed to update VerticalWorkloadAutoscaler status")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Successfully reconciled WorkloadAutoscaler")
+	logger.Info("Successfully reconciled VerticalWorkloadAutoscaler")
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *WorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := ctrl.NewControllerManagedBy(mgr).
-		For(&autoscalingk8siov1alpha1.WorkloadAutoscaler{}).
+		For(&vwav1.VerticalWorkloadAutoscaler{}).
 		Watches(
 			&vpav1.VerticalPodAutoscaler{},
 			handler.EnqueueRequestsFromMapFunc(r.findObjectsForVPA),
@@ -134,11 +134,11 @@ func (r *WorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	return nil
 }
 
-func (r *WorkloadAutoscalerReconciler) findObjectsForVPA(_ context.Context, obj client.Object) []reconcile.Request {
+func (r *VerticalWorkloadAutoscalerReconciler) findObjectsForVPA(_ context.Context, obj client.Object) []reconcile.Request {
 	var requests []reconcile.Request
-	var waList autoscalingk8siov1alpha1.WorkloadAutoscalerList
+	var waList vwav1.VerticalWorkloadAutoscalerList
 	if err := r.List(context.Background(), &waList); err != nil {
-		log.Log.Error(err, "Failed to list WorkloadAutoscaler objects")
+		log.Log.Error(err, "Failed to list VerticalWorkloadAutoscaler objects")
 		return requests
 	}
 	vpa, ok := obj.(*vpav1.VerticalPodAutoscaler)

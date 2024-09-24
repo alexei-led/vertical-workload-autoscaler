@@ -4,14 +4,14 @@ import (
 	"context"
 	"time"
 
-	autoscalingk8siov1alpha1 "github.com/alexei-led/workload-autoscaler/api/v1alpha1"
+	autoscalingk8siov1alpha1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var timeNow = time.Now
 
 // shouldDelayUpdate checks if the update should be delayed based on the configuration
-func (r *WorkloadAutoscalerReconciler) shouldDelayUpdate(wa autoscalingk8siov1alpha1.WorkloadAutoscaler) (time.Duration, bool) {
+func (r *VerticalWorkloadAutoscalerReconciler) shouldDelayUpdate(wa autoscalingk8siov1alpha1.VerticalWorkloadAutoscaler) (time.Duration, bool) {
 	now := timeNow()
 
 	// If no allowed update windows are set, update immediately
@@ -61,7 +61,7 @@ func (r *WorkloadAutoscalerReconciler) shouldDelayUpdate(wa autoscalingk8siov1al
 	return nextUpdate.Sub(now), true
 }
 
-func (r *WorkloadAutoscalerReconciler) recordProgress(ctx context.Context, wa autoscalingk8siov1alpha1.WorkloadAutoscaler) error {
+func (r *VerticalWorkloadAutoscalerReconciler) recordProgress(ctx context.Context, wa autoscalingk8siov1alpha1.VerticalWorkloadAutoscaler) error {
 	wa.Status.UpdateCount++
 	if err := r.Status().Update(ctx, &wa); err != nil {
 		return err
@@ -69,7 +69,7 @@ func (r *WorkloadAutoscalerReconciler) recordProgress(ctx context.Context, wa au
 	return nil
 }
 
-func (r *WorkloadAutoscalerReconciler) updateStatus(ctx context.Context, wa autoscalingk8siov1alpha1.WorkloadAutoscaler) error {
+func (r *VerticalWorkloadAutoscalerReconciler) updateStatus(ctx context.Context, wa autoscalingk8siov1alpha1.VerticalWorkloadAutoscaler) error {
 	wa.Status.LastUpdated = metav1.Now()
 	if err := r.Status().Update(ctx, &wa); err != nil {
 		return err

@@ -1,17 +1,17 @@
-# WorkloadAutoscaler Controller Implementation Steps
+# VerticalWorkloadAutoscaler Controller Implementation Steps
 
-This document outlines the steps required to implement the WorkloadAutoscaler controller logic and helper functions.
+This document outlines the steps required to implement the VerticalWorkloadAutoscaler controller logic and helper functions.
 
 ## 1. Reconcile Function Implementation
 
 ### 1.1 Core Reconcile Logic
 
 - [x] Open `internal/controller/workloadautoscaler_controller.go`
-- [x] Fetch the `WorkloadAutoscaler` object.
-- [x] Fetch the target resource (e.g., Deployment, StatefulSet, CronJob, DaemonSet) referenced by the `WorkloadAutoscaler` CRD.
+- [x] Fetch the `VerticalWorkloadAutoscaler` object.
+- [x] Fetch the target resource (e.g., Deployment, StatefulSet, CronJob, DaemonSet) referenced by the `VerticalWorkloadAutoscaler` CRD.
 - [x] Fetch the associated `VPA` object.
 - [x] Process existing VPA recommendations (on the first run) and watch for future updates.
-- [x] Determine if an update is needed based on the VPA recommendations and `WorkloadAutoscaler` configuration (time windows, step size, etc.).
+- [x] Determine if an update is needed based on the VPA recommendations and `VerticalWorkloadAutoscaler` configuration (time windows, step size, etc.).
 - [x] If an update is needed:
   - [x] Calculate new resource values (requests/limits) based on StepSize configuration.
   - [x] Update the target resource (e.g., `Deployment`) with new resource values.
@@ -25,8 +25,8 @@ This document outlines the steps required to implement the WorkloadAutoscaler co
     ```
 
 - [x] If an update is not allowed due to configuration (e.g., outside allowed windows), store the new recommendation and retry later.
-- [x] Record retry attempts and success/failure statuses in `WorkloadAutoscaler` status.
-- [x] Update the `WorkloadAutoscaler` status after each reconcile loop.
+- [x] Record retry attempts and success/failure statuses in `VerticalWorkloadAutoscaler` status.
+- [x] Update the `VerticalWorkloadAutoscaler` status after each reconcile loop.
 - [x] Implement support for delayed updates, including allowed update windows, grace periods, and update frequencies (considering timezones).
 
 ### 1.2 HPA Conflict Resolution
@@ -37,7 +37,7 @@ This document outlines the steps required to implement the WorkloadAutoscaler co
   - [ ] Identify HPAs that overlap with VPA on scaling metrics (CPU or memory).
 - [ ] Skip conflicting VPA recommendations:
   - [ ] Skip applying VPA recommendations if a conflicting HPA is detected (e.g., HPA scaling CPU or memory).
-  - [ ] Log or update the `WorkloadAutoscaler` status to indicate that VPA recommendations were skipped due to HPA conflict:
+  - [ ] Log or update the `VerticalWorkloadAutoscaler` status to indicate that VPA recommendations were skipped due to HPA conflict:
 
     ```yaml
     conflicts:
@@ -62,14 +62,14 @@ This document outlines the steps required to implement the WorkloadAutoscaler co
 
 - [x] Create `internal/controller/resources.go`
 - [x] Implement functions to:
-  - [x] Calculate resource values based on VPA recommendations and `WorkloadAutoscaler` StepSize configuration.
+  - [x] Calculate resource values based on VPA recommendations and `VerticalWorkloadAutoscaler` StepSize configuration.
   - [x] Update resource requirements for the target resource.
 
 ### 2.3 Update Checker Functions
 
 - [x] Create `internal/controller/update_checker.go`
 - [x] Implement functions to:
-  - [x] Check if an update is allowed based on the `WorkloadAutoscaler` configuration (e.g., time windows, grace period, update frequency).
+  - [x] Check if an update is allowed based on the `VerticalWorkloadAutoscaler` configuration (e.g., time windows, grace period, update frequency).
   - [x] Store and retry later if the update is not allowed.
 
 ### 2.4 HPA Conflict Detection Functions
@@ -79,7 +79,7 @@ This document outlines the steps required to implement the WorkloadAutoscaler co
   - [ ] List HPAs in the same namespace as the target resource.
   - [ ] Detect conflicts between HPAs and VPAs.
   - [ ] Skip conflicting VPA recommendations when conflicts are detected.
-  - [ ] Update the `WorkloadAutoscaler` status with conflict information.
+  - [ ] Update the `VerticalWorkloadAutoscaler` status with conflict information.
 
 ## 3. Testing
 
@@ -100,5 +100,5 @@ This document outlines the steps required to implement the WorkloadAutoscaler co
 ### 4.1 End-to-End Tests
 
 - [ ] Update `test/e2e/e2e_test.go`:
-  - [ ] Write integration tests for the `WorkloadAutoscaler` controller's core logic.
+  - [ ] Write integration tests for the `VerticalWorkloadAutoscaler` controller's core logic.
   - [ ] Write tests to validate HPA conflict resolution.

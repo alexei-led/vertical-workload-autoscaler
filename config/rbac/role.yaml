@@ -7,7 +7,7 @@ rules:
 - apiGroups:
   - autoscaling.k8s.io
   resources:
-  - workloadautoscalers
+  - verticalworkloadautoscalers
   verbs:
   - create
   - delete
@@ -19,13 +19,13 @@ rules:
 - apiGroups:
   - autoscaling.k8s.io
   resources:
-  - workloadautoscalers/finalizers
+  - verticalworkloadautoscalers/finalizers
   verbs:
   - update
 - apiGroups:
   - autoscaling.k8s.io
   resources:
-  - workloadautoscalers/status
+  - verticalworkloadautoscalers/status
   verbs:
   - get
   - patch

@@ -10,20 +10,19 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	autoscalingk8siov1alpha1 "github.com/alexei-led/workload-autoscaler/api/v1alpha1"
 )
 
-var _ = Describe("WorkloadAutoscaler Controller", func() {
+var _ = Describe("VerticalWorkloadAutoscaler Controller", func() {
 	const resourceName = "test-resource"
 	const namespace = "default"
 
 	var (
-		ctx                  context.Context
-		typeNamespacedName   types.NamespacedName
-		workloadautoscaler   *autoscalingk8siov1alpha1.WorkloadAutoscaler
-		controllerReconciler *WorkloadAutoscalerReconciler
+		ctx                        context.Context
+		typeNamespacedName         types.NamespacedName
+		verticalWorkloadAutoscaler *vwav1.VerticalWorkloadAutoscaler
+		controllerReconciler       *VerticalWorkloadAutoscalerReconciler
 	)
 
 	BeforeEach(func() {
@@ -32,16 +31,16 @@ var _ = Describe("WorkloadAutoscaler Controller", func() {
 			Name:      resourceName,
 			Namespace: namespace,
 		}
-		workloadautoscaler = &autoscalingk8siov1alpha1.WorkloadAutoscaler{}
-		controllerReconciler = &WorkloadAutoscalerReconciler{
+		verticalWorkloadAutoscaler = &vwav1.VerticalWorkloadAutoscaler{}
+		controllerReconciler = &VerticalWorkloadAutoscalerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
 		}
 
-		By("creating the custom resource for the Kind WorkloadAutoscaler")
-		err := k8sClient.Get(ctx, typeNamespacedName, workloadautoscaler)
+		By("creating the custom resource for the Kind VerticalWorkloadAutoscaler")
+		err := k8sClient.Get(ctx, typeNamespacedName, verticalWorkloadAutoscaler)
 		if err != nil && errors.IsNotFound(err) {
-			resource := &autoscalingk8siov1alpha1.WorkloadAutoscaler{
+			resource := &vwav1.VerticalWorkloadAutoscaler{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: namespace,
@@ -53,8 +52,8 @@ var _ = Describe("WorkloadAutoscaler Controller", func() {
 	})
 
 	AfterEach(func() {
-		By("cleaning up the custom resource for the Kind WorkloadAutoscaler")
-		resource := &autoscalingk8siov1alpha1.WorkloadAutoscaler{}
+		By("cleaning up the custom resource for the Kind VerticalWorkloadAutoscaler")
+		resource := &vwav1.VerticalWorkloadAutoscaler{}
 		err := k8sClient.Get(ctx, typeNamespacedName, resource)
 		if err == nil {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -70,18 +69,18 @@ var _ = Describe("WorkloadAutoscaler Controller", func() {
 
 		// Example: If you expect a certain status condition after reconciliation, verify it here.
 		Eventually(func() error {
-			return k8sClient.Get(ctx, typeNamespacedName, workloadautoscaler)
+			return k8sClient.Get(ctx, typeNamespacedName, verticalWorkloadAutoscaler)
 		}).Should(Succeed())
 	})
 
 	It("should delay update if outside allowed update window", func() {
-		wa := &autoscalingk8siov1alpha1.WorkloadAutoscaler{
+		wa := &vwav1.VerticalWorkloadAutoscaler{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName,
 				Namespace: namespace,
 			},
-			Spec: autoscalingk8siov1alpha1.WorkloadAutoscalerSpec{
-				AllowedUpdateWindows: []autoscalingk8siov1alpha1.UpdateWindow{
+			Spec: vwav1.VerticalWorkloadAutoscalerSpec{
+				AllowedUpdateWindows: []vwav1.UpdateWindow{
 					{
 						DayOfWeek: "Monday",
 						StartTime: "10:00",
@@ -92,7 +91,7 @@ var _ = Describe("WorkloadAutoscaler Controller", func() {
 			},
 		}
 
-		// Create the WorkloadAutoscaler object
+		// Create the VerticalWorkloadAutoscaler object
 		Expect(k8sClient.Create(ctx, wa)).Should(Succeed())
 		defer func() { Expect(k8sClient.Delete(ctx, wa)).To(Succeed()) }()
 
