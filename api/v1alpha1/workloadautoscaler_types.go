@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -46,6 +47,7 @@ type ResourceReference struct {
 	APIVersion string `json:"apiVersion"`
 	Kind       string `json:"kind"`
 	Name       string `json:"name"`
+	Namespace  string `json:"namespace"`
 }
 
 // UpdateWindow defines a time window for allowed updates
@@ -63,23 +65,18 @@ type Duration struct {
 
 // WorkloadAutoscalerStatus defines the observed state of WorkloadAutoscaler
 type WorkloadAutoscalerStatus struct {
-	CurrentStatus       string             `json:"currentStatus,omitempty"`
-	TargetedResource    TargetedResource   `json:"targetedResource,omitempty"`
-	LastUpdated         metav1.Time        `json:"lastUpdated,omitempty"`
-	CurrentRequests     ResourceRequests   `json:"currentRequests,omitempty"`
-	RecommendedRequests ResourceRequests   `json:"recommendedRequests,omitempty"`
-	SkippedUpdates      bool               `json:"skippedUpdates,omitempty"`
-	SkipReason          string             `json:"skipReason,omitempty"`
-	StepSize            ResourceRequests   `json:"stepSize,omitempty"`
-	Errors              []string           `json:"errors,omitempty"`
-	UpdateCount         int32              `json:"updateCount,omitempty"`
-	Conditions          []metav1.Condition `json:"conditions,omitempty"`
-}
-
-// TargetedResource defines the targeted resource information
-type TargetedResource struct {
-	Kind string `json:"kind"`
-	Name string `json:"name"`
+	CurrentStatus       string                                 `json:"currentStatus,omitempty"`
+	TargetResource      ResourceReference                      `json:"targetResource,omitempty"`
+	LastUpdated         metav1.Time                            `json:"lastUpdated,omitempty"`
+	CurrentRequests     ResourceRequests                       `json:"currentRequests,omitempty"`
+	RecommendedRequests map[string]corev1.ResourceRequirements `json:"recommendedRequests,omitempty"`
+	SkippedUpdates      bool                                   `json:"skippedUpdates,omitempty"`
+	SkipReason          string                                 `json:"skipReason,omitempty"`
+	StepSize            ResourceRequests                       `json:"stepSize,omitempty"`
+	Errors              []string                               `json:"errors,omitempty"`
+	UpdateCount         int32                                  `json:"updateCount,omitempty"`
+	Conditions          []metav1.Condition                     `json:"conditions,omitempty"`
+	QualityOfService    string                                 `json:"qualityOfService,omitempty"`
 }
 
 // ResourceRequests defines the resource requests for CPU and Memory
