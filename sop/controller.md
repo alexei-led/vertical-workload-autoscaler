@@ -56,8 +56,8 @@ This document outlines the detailed steps required to implement the WorkloadAuto
 
 ### 3.1. Unit Tests
 
-- [ ] Create `internal/controller/workloadautoscaler_controller_test.go`
-- [ ] Write unit tests for the Reconcile function
+- [x] Create `internal/controller/workloadautoscaler_controller_test.go`
+- [x] Write unit tests for the Reconcile function
 
 ### 3.2. Helper Function Tests
 
