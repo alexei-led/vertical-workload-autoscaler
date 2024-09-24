@@ -39,9 +39,9 @@ type VerticalWorkloadAutoscalerReconciler struct {
 }
 
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalpodautoscalers,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -56,6 +56,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, re
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Failed to get VerticalWorkloadAutoscaler")
+		r.updateStatusOnError(ctx, &wa, err)
 		return ctrl.Result{}, err
 	}
 
@@ -73,6 +74,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, re
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Failed to fetch VPA")
+		r.updateStatusOnError(ctx, &wa, err)
 		return ctrl.Result{}, err
 	}
 
@@ -84,6 +86,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, re
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Failed to fetch target resource")
+		r.updateStatusOnError(ctx, &wa, err)
 		return ctrl.Result{}, err
 	}
 
@@ -91,12 +94,14 @@ func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, re
 	conflicts, err := r.detectHPAConflicts(ctx, targetResource)
 	if err != nil {
 		logger.Error(err, "Failed to detect HPA conflicts")
+		r.updateStatusOnError(ctx, &wa, err)
 		return ctrl.Result{}, err
 	}
 
 	// Handle HPA conflicts
-	if err := r.handleHPAConflicts(ctx, wa, conflicts); err != nil {
+	if err = r.handleHPAConflicts(ctx, wa, conflicts); err != nil {
 		logger.Error(err, "Failed to handle HPA conflicts")
+		r.updateStatusOnError(ctx, &wa, err)
 		return ctrl.Result{}, err
 	}
 
@@ -107,6 +112,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, re
 	updated, err := r.updateTargetResource(ctx, targetResource, newResources)
 	if err != nil {
 		logger.Error(err, "Failed to update target resource")
+		r.updateStatusOnError(ctx, &wa, err)
 		return ctrl.Result{}, err
 	}
 
@@ -114,19 +120,15 @@ func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, re
 		// Update annotations to force pod recreation and add GitOps conflict avoidance
 		if err = r.updateAnnotations(ctx, targetResource); err != nil {
 			logger.Error(err, "Failed to update annotations")
+			r.updateStatusOnError(ctx, &wa, err)
 			return ctrl.Result{}, err
 		}
 	}
 
-	// Record progress statuses on the VerticalWorkloadAutoscaler object status
-	if err = r.recordProgress(ctx, wa); err != nil {
-		logger.Error(err, "Failed to record progress")
-		return ctrl.Result{}, err
-	}
-
 	// Update VerticalWorkloadAutoscaler status
-	if err = r.updateStatus(ctx, wa); err != nil {
+	if err = r.updateStatus(ctx, &wa, newResources); err != nil {
 		logger.Error(err, "Failed to update VerticalWorkloadAutoscaler status")
+		r.updateStatusOnError(ctx, &wa, err)
 		return ctrl.Result{}, err
 	}
 

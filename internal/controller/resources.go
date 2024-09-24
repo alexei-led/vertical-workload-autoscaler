@@ -40,11 +40,11 @@ func (r *VerticalWorkloadAutoscalerReconciler) fetchTargetResource(ctx context.C
 	return targetResource, nil
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.VerticalWorkloadAutoscaler, recommendations *vpav1.RecommendedPodResources) map[string]*corev1.ResourceRequirements {
-	newResources := make(map[string]*corev1.ResourceRequirements)
+func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.VerticalWorkloadAutoscaler, recommendations *vpav1.RecommendedPodResources) map[string]corev1.ResourceRequirements {
+	newResources := make(map[string]corev1.ResourceRequirements)
 
 	for _, containerRec := range recommendations.ContainerRecommendations {
-		newReq := &corev1.ResourceRequirements{
+		newReq := corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{},
 			Limits:   corev1.ResourceList{},
 		}
@@ -91,20 +91,20 @@ func roundUp(quantity resource.Quantity, step resource.Quantity) resource.Quanti
 	return *resource.NewQuantity(roundedValue, quantity.Format)
 }
 
-func resourceRequirementsEqual(a, b *corev1.ResourceRequirements) bool {
+func resourceRequirementsEqual(a, b corev1.ResourceRequirements) bool {
 	return a.Requests.Cpu().Equal(*b.Requests.Cpu()) &&
 		a.Requests.Memory().Equal(*b.Requests.Memory()) &&
 		a.Limits.Cpu().Equal(*b.Limits.Cpu()) &&
 		a.Limits.Memory().Equal(*b.Limits.Memory())
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context, targetResource client.Object, newResources map[string]*corev1.ResourceRequirements) (bool, error) {
+func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context, targetResource client.Object, newResources map[string]corev1.ResourceRequirements) (bool, error) {
 	needsUpdate := false
 
 	updateContainers := func(containers []corev1.Container) {
 		for _, container := range containers {
 			if recommendedResources, ok := newResources[container.Name]; ok {
-				if !resourceRequirementsEqual(&container.Resources, recommendedResources) {
+				if !resourceRequirementsEqual(container.Resources, recommendedResources) {
 					recommendedResources.Requests.DeepCopyInto(&container.Resources.Requests)
 					recommendedResources.Limits.DeepCopyInto(&container.Resources.Limits)
 					needsUpdate = true

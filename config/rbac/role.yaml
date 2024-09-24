@@ -15,6 +15,14 @@ rules:
 - apiGroups:
   - autoscaling.k8s.io
   resources:
+  - verticalpodautoscalers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - autoscaling.k8s.io
+  resources:
   - verticalworkloadautoscalers
   verbs:
   - create
@@ -29,12 +37,4 @@ rules:
   resources:
   - verticalworkloadautoscalers/finalizers
   verbs:
-  - update
-- apiGroups:
-  - autoscaling.k8s.io
-  resources:
-  - verticalworkloadautoscalers/status
-  verbs:
-  - get
-  - patch
   - update
