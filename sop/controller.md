@@ -91,7 +91,7 @@ This document outlines the steps required to implement the VerticalWorkloadAutos
 ### 3.2 Unit Tests for Helper Functions
 
 - [x] Create `internal/controller/vpa_test.go` for VPA interaction functions.
-- [ ] Create `internal/controller/resources_test.go` for resource calculation functions.
+- [x] Create `internal/controller/resources_test.go` for resource calculation functions.
 - [ ] Create `internal/controller/update_checker_test.go` for update checker functions.
 - [ ] Create `internal/controller/hpa_test.go` for HPA conflict detection functions.
 
