@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
@@ -85,10 +86,20 @@ func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.Ve
 }
 
 func roundUp(quantity resource.Quantity, step resource.Quantity) resource.Quantity {
-	value := quantity.Value()
-	stepValue := step.Value()
-	roundedValue := ((value + stepValue - 1) / stepValue) * stepValue
-	return *resource.NewQuantity(roundedValue, quantity.Format)
+	value := quantity.AsApproximateFloat64()
+	stepValue := step.AsApproximateFloat64()
+	roundedValue := math.Ceil(value/stepValue) * stepValue
+
+	var result resource.Quantity
+	if quantity.Format == resource.DecimalSI && quantity.ScaledValue(resource.Milli) != quantity.Value() && stepValue < 1 {
+		result = *resource.NewMilliQuantity(int64(roundedValue*1000), quantity.Format)
+	} else {
+		result = *resource.NewQuantity(int64(roundedValue), quantity.Format)
+	}
+
+	// Ensure the string representation is set correctly
+	result.String()
+	return result
 }
 
 func resourceRequirementsEqual(a, b corev1.ResourceRequirements) bool {
