@@ -146,6 +146,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.
 	}
 	return needsUpdate, nil
 }
+
 func (r *VerticalWorkloadAutoscalerReconciler) updateAnnotations(ctx context.Context, targetResource client.Object) error {
 	annotations := targetResource.GetAnnotations()
 	if annotations == nil {
