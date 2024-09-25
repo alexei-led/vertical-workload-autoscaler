@@ -8,6 +8,7 @@ rules:
   - autoscaling
   resources:
   - horizontalpodautoscalers
+  - horizontalpodautoscalers/status
   verbs:
   - get
   - list
@@ -16,6 +17,7 @@ rules:
   - autoscaling.k8s.io
   resources:
   - verticalpodautoscalers
+  - verticalpodautoscalers/status
   verbs:
   - get
   - list

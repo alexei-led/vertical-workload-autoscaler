@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -41,7 +40,9 @@ type VerticalWorkloadAutoscalerReconciler struct {
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalpodautoscalers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalpodautoscalers/status,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -142,8 +143,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager
 		For(&vwav1.VerticalWorkloadAutoscaler{}).
 		Watches(
 			&vpav1.VerticalPodAutoscaler{},
-			handler.EnqueueRequestsFromMapFunc(r.findObjectsForVPA),
-			builder.WithPredicates(VPARecommendationChangedPredicate{})).
+			handler.EnqueueRequestsFromMapFunc(r.findObjectsForVPA)).
 		Watches(
 			&autoscalingv2.HorizontalPodAutoscaler{},
 			&handler.EnqueueRequestForObject{},
