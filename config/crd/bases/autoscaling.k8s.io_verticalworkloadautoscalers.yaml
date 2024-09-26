@@ -44,16 +44,37 @@ spec:
               of VerticalWorkloadAutoscaler
             properties:
               allowedUpdateWindows:
+                description: |-
+                  AllowedUpdateWindows defines specific time windows during which updates to resource requests
+                  are permitted. This can help minimize disruptions during peak usage times.
+                  Each update window should specify the day of the week, start time, and end time.
                 items:
                   description: UpdateWindow defines a time window for allowed updates
                   properties:
                     dayOfWeek:
+                      description: DayOfWeek represents the day of the week for the
+                        update window.
+                      enum:
+                      - Monday
+                      - Tuesday
+                      - Wednesday
+                      - Thursday
+                      - Friday
+                      - Saturday
+                      - Sunday
                       type: string
                     endTime:
+                      description: EndTime represents the end of the update window
+                      format: date-time
                       type: string
                     startTime:
+                      description: StartTime represents the start of the update window
+                      format: date-time
                       type: string
                     timeZone:
+                      description: TimeZone represents the time zone in IANA format,
+                        like "UTC" or "America/New_York"
+                      pattern: ^[A-Za-z]+/[A-Za-z_]+$
                       type: string
                   required:
                   - dayOfWeek
@@ -63,40 +84,62 @@ spec:
                   type: object
                 type: array
               avoidCPULimit:
+                default: true
+                description: |-
+                  AvoidCPULimit indicates whether the VWA should avoid setting CPU limits on the managed resource.
+                  If set to true, only resource requests will be set, which may be beneficial in scenarios
+                  where burstable workloads are expected. The default value is true.
                 type: boolean
               gracePeriod:
-                description: Duration defines a duration in Go Duration format
-                properties:
-                  duration:
-                    type: string
-                required:
-                - duration
-                type: object
+                default: 30s
+                description: |-
+                  GracePeriod indicates the duration the VWA should wait after applying updates before
+                  making further adjustments. This allows for stabilization of the resource usage after changes.
+                  The default value is set to 30 seconds if not specified.
+                type: string
               qualityOfService:
+                allOf:
+                - enum:
+                  - Burstable
+                  - Guaranteed
+                - enum:
+                  - Guaranteed
+                  - Burstable
                 default: Guaranteed
-                enum:
-                - Burstable
-                - Guaranteed
+                description: |-
+                  QualityOfService defines the quality of service class to be applied to the managed resource.
+                  This can help Kubernetes make scheduling decisions based on the resource guarantees.
+                  Possible values are:
+                  - "Guaranteed": CPU and Memory requests are equal to limits for all containers.
+                  - "Burstable": Requests are lower than limits, allowing bursts of usage.
+                  If not set, the default is "Guaranteed".
                 type: string
               stepSize:
-                description: ResourceRequests defines the resource requests for CPU
-                  and Memory
+                description: |-
+                  StepSize represents the incremental size by which the resource requests (CPU and Memory)
+                  can be adjusted during each update. This allows for controlled and gradual scaling.
+                  For example, a step size of "200m" for CPU means that requests can be increased or decreased
+                  by 200 milliCPU units.
                 properties:
                   cpu:
+                    default: 100m
+                    description: 'Step size for CPU requests (default: 100m)'
                     type: string
                   memory:
+                    default: 128Mi
+                    description: 'Step size for memory requests (default: 128Mi)'
                     type: string
                 type: object
               updateFrequency:
-                description: Duration defines a duration in Go Duration format
-                properties:
-                  duration:
-                    type: string
-                required:
-                - duration
-                type: object
+                default: 5m
+                description: |-
+                  UpdateFrequency specifies how often the VWA should check and apply updates to resource requests.
+                  It is defined as a duration (e.g., "30s", "1m"). The default value is set to 5 minutes if not specified.
+                type: string
               vpaReference:
-                description: VPAReference defines the reference to the VerticalPodAutoscaler
+                description: |-
+                  VPAReference defines the reference to the VerticalPodAutoscaler that this VWA is managing.
+                  This allows the VWA to coordinate with the VPA to ensure optimal resource allocation.
                 properties:
                   name:
                     type: string
@@ -104,11 +147,6 @@ spec:
                 - name
                 type: object
             required:
-            - allowedUpdateWindows
-            - gracePeriod
-            - qualityOfService
-            - stepSize
-            - updateFrequency
             - vpaReference
             type: object
           status:
@@ -116,6 +154,9 @@ spec:
               of VerticalWorkloadAutoscaler
             properties:
               conditions:
+                description: |-
+                  Conditions contains the current conditions of the VWA, which can provide insights
+                  about its operational state.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -172,6 +213,8 @@ spec:
                   type: object
                 type: array
               conflicts:
+                description: Conflicts contains a list of resources that conflict
+                  with the VWA's recommendations.
                 items:
                   properties:
                     conflictWith:
@@ -186,24 +229,61 @@ spec:
                   type: object
                 type: array
               currentRequests:
-                description: ResourceRequests defines the resource requests for CPU
-                  and Memory
+                description: CurrentRequests represents the current resource requests
+                  (CPU and Memory) for the managed resource.
                 properties:
                   cpu:
+                    default: 100m
+                    description: 'Step size for CPU requests (default: 100m)'
                     type: string
                   memory:
+                    default: 128Mi
+                    description: 'Step size for memory requests (default: 128Mi)'
                     type: string
                 type: object
               currentStatus:
+                description: |-
+                  CurrentStatus represents the current status of the VWA.
+                  Possible values:
+                  - "Pending": VWA is being initialized.
+                  - "Active": VWA is actively managing workloads.
+                  - "Updating": VWA is applying updates to resources.
+                  - "Failed": VWA encountered an error while processing.
+                enum:
+                - Pending
+                - Active
+                - Updating
+                - Failed
                 type: string
               errors:
+                description: Errors contains a list of error messages encountered
+                  during the VWA's operation.
                 items:
                   type: string
                 type: array
+              hpaReference:
+                description: HPAReference defines the reference to the HorizontalPodAutoscaler
+                  that is associated with the VWA.
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
               lastUpdated:
+                description: LastUpdated indicates the last time the VWA status was
+                  updated.
                 format: date-time
                 type: string
               qualityOfService:
+                description: |-
+                  QualityOfService defines the quality of service class being applied to the resource.
+                  Possible values:
+                  - "Guaranteed": CPU/Memory requests are equal to limits for all containers.
+                  - "Burstable": Requests are lower than limits, allowing bursts.
+                enum:
+                - Guaranteed
+                - Burstable
                 type: string
               recommendedRequests:
                 additionalProperties:
@@ -266,23 +346,34 @@ spec:
                         More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                       type: object
                   type: object
+                description: |-
+                  RecommendedRequests maps the recommended resource requests for the managed resource.
+                  The key is the container name, and the value is the resource requirements.
                 type: object
               skipReason:
+                description: SkipReason provides the reason for skipped updates, if
+                  applicable.
                 type: string
               skippedUpdates:
+                description: SkippedUpdates indicates whether updates were skipped
+                  during the last reconciliation.
                 type: boolean
               stepSize:
-                description: ResourceRequests defines the resource requests for CPU
-                  and Memory
+                description: StepSize defines the resource change size for each update.
                 properties:
                   cpu:
+                    default: 100m
+                    description: 'Step size for CPU requests (default: 100m)'
                     type: string
                   memory:
+                    default: 128Mi
+                    description: 'Step size for memory requests (default: 128Mi)'
                     type: string
                 type: object
               targetResource:
-                description: ResourceReference defines a reference to a Kubernetes
-                  resource
+                description: |-
+                  TargetResource defines the reference to the resource being managed by the VWA.
+                  This could reference different kinds of resources (e.g., Deployment, StatefulSet).
                 properties:
                   apiVersion:
                     type: string
@@ -296,8 +387,12 @@ spec:
                 - name
                 type: object
               updateCount:
+                description: UpdateCount represents the number of updates applied
+                  by the VWA.
                 format: int32
                 type: integer
+            required:
+            - targetResource
             type: object
         type: object
     served: true
