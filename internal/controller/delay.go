@@ -1,18 +1,17 @@
 package controller
 
 import (
-	"context"
 	"time"
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var timeNow = time.Now
+var (
+	timeNow = time.Now
+)
 
-// shouldDelayUpdate checks if the update should be delayed based on the configuration
-func (r *VerticalWorkloadAutoscalerReconciler) shouldDelayUpdate(wa vwav1.VerticalWorkloadAutoscaler) (time.Duration, bool) {
+// shouldDelayUpdateWindow checks if the current time is within the allowed update window
+func (r *VerticalWorkloadAutoscalerReconciler) shouldDelayUpdateWindow(wa vwav1.VerticalWorkloadAutoscaler) (time.Duration, bool) {
 	now := timeNow()
 
 	// If no allowed update windows are set, update immediately
@@ -62,19 +61,29 @@ func (r *VerticalWorkloadAutoscalerReconciler) shouldDelayUpdate(wa vwav1.Vertic
 	return nextUpdate.Sub(now), true
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) updateStatus(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, newResources map[string]v1.ResourceRequirements) error {
-	wa.Status.UpdateCount++
-	wa.Status.LastUpdated = metav1.Now()
-	wa.Status.CurrentStatus = "Updated"
-	wa.Status.RecommendedRequests = newResources
-	wa.Status.StepSize = wa.Spec.StepSize
-	wa.Status.QualityOfService = wa.Spec.QualityOfService
+// shouldDelayUpdateFrequency checks if the update frequency has been reached
+func (r *VerticalWorkloadAutoscalerReconciler) shouldDelayUpdateFrequency(wa vwav1.VerticalWorkloadAutoscaler) (time.Duration, bool) {
+	if wa.Status.LastUpdated == nil {
+		return 0, false
+	}
 
-	return r.Status().Update(ctx, wa)
+	now := timeNow()
+	nextUpdate := wa.Status.LastUpdated.Add(wa.Spec.UpdateFrequency.Duration)
+	if now.Before(nextUpdate) {
+		return nextUpdate.Sub(now), true
+	}
+
+	return 0, false
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) updateStatusOnError(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, err error) {
-	wa.Status.CurrentStatus = "Error"
-	wa.Status.Errors = append(wa.Status.Errors, err.Error())
-	r.Status().Update(ctx, wa) // nolint:errcheck
+func (r *VerticalWorkloadAutoscalerReconciler) shouldDelayUpdate(wa vwav1.VerticalWorkloadAutoscaler) (time.Duration, bool) {
+	if delay, shouldDelay := r.shouldDelayUpdateWindow(wa); shouldDelay {
+		return delay, true
+	}
+
+	if delay, shouldDelay := r.shouldDelayUpdateFrequency(wa); shouldDelay {
+		return delay, true
+	}
+
+	return 0, false
 }
