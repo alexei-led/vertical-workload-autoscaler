@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"math"
 	"time"
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
@@ -41,8 +40,22 @@ func (r *VerticalWorkloadAutoscalerReconciler) fetchTargetResource(ctx context.C
 	return targetResource, nil
 }
 
+// calculateNewResources calculates the new resource requirements based on the VPA recommendations
+// and the VWA configuration (tolerance, quality of service, etc.)
 func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.VerticalWorkloadAutoscaler, recommendations *vpav1.RecommendedPodResources) map[string]corev1.ResourceRequirements {
 	newResources := make(map[string]corev1.ResourceRequirements)
+
+	cpuTolerance := 0.10    // default 10%
+	memoryTolerance := 0.10 // default 10%
+
+	if wa.Spec.UpdateTolerance != nil {
+		if wa.Spec.UpdateTolerance.CPU > 0 {
+			cpuTolerance = float64(wa.Spec.UpdateTolerance.CPU) / 100
+		}
+		if wa.Spec.UpdateTolerance.Memory > 0 {
+			memoryTolerance = float64(wa.Spec.UpdateTolerance.Memory) / 100
+		}
+	}
 
 	for _, containerRec := range recommendations.ContainerRecommendations {
 		newReq := corev1.ResourceRequirements{
@@ -50,56 +63,47 @@ func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.Ve
 			Limits:   corev1.ResourceList{},
 		}
 
-		stepCPU := resource.MustParse(wa.Spec.StepSize.CPU)
-		stepMemory := resource.MustParse(wa.Spec.StepSize.Memory)
-
-		if wa.Spec.QualityOfService == "Guaranteed" {
-			targetCPU := roundUp(containerRec.Target[corev1.ResourceCPU], stepCPU)
-			targetMemory := roundUp(containerRec.Target[corev1.ResourceMemory], stepMemory)
-
-			newReq.Requests[corev1.ResourceCPU] = targetCPU
-			newReq.Requests[corev1.ResourceMemory] = targetMemory
-
-			if !wa.Spec.AvoidCPULimit {
-				newReq.Limits[corev1.ResourceCPU] = targetCPU
+		applyUpdate := func(current, recommended resource.Quantity, tolerance float64) bool {
+			if current.IsZero() {
+				return true
 			}
-			newReq.Limits[corev1.ResourceMemory] = targetMemory
-		} else if wa.Spec.QualityOfService == "Burstable" {
-			lowerBoundCPU := roundUp(containerRec.LowerBound[corev1.ResourceCPU], stepCPU)
-			lowerBoundMemory := roundUp(containerRec.LowerBound[corev1.ResourceMemory], stepMemory)
-			upperBoundCPU := roundUp(containerRec.UpperBound[corev1.ResourceCPU], stepCPU)
-			upperBoundMemory := roundUp(containerRec.UpperBound[corev1.ResourceMemory], stepMemory)
+			change := float64(recommended.MilliValue()-current.MilliValue()) / float64(current.MilliValue())
+			return change >= tolerance || change <= -tolerance
+		}
 
-			newReq.Requests[corev1.ResourceCPU] = lowerBoundCPU
-			newReq.Requests[corev1.ResourceMemory] = lowerBoundMemory
-
-			if !wa.Spec.AvoidCPULimit {
-				newReq.Limits[corev1.ResourceCPU] = upperBoundCPU
+		if wa.Spec.QualityOfService == vwav1.GuaranteedQualityOfService {
+			if applyUpdate(containerRec.Target[corev1.ResourceCPU], containerRec.Target[corev1.ResourceCPU], cpuTolerance) {
+				newReq.Requests[corev1.ResourceCPU] = containerRec.Target[corev1.ResourceCPU]
+				if !wa.Spec.AvoidCPULimit {
+					newReq.Limits[corev1.ResourceCPU] = containerRec.Target[corev1.ResourceCPU]
+				}
 			}
-			newReq.Limits[corev1.ResourceMemory] = upperBoundMemory
+			if applyUpdate(containerRec.Target[corev1.ResourceMemory], containerRec.Target[corev1.ResourceMemory], memoryTolerance) {
+				newReq.Requests[corev1.ResourceMemory] = containerRec.Target[corev1.ResourceMemory]
+				newReq.Limits[corev1.ResourceMemory] = containerRec.Target[corev1.ResourceMemory]
+			}
+		} else if wa.Spec.QualityOfService == vwav1.BurstableQualityOfService {
+			lowerBoundCPU := containerRec.LowerBound[corev1.ResourceCPU]
+			lowerBoundMemory := containerRec.LowerBound[corev1.ResourceMemory]
+			upperBoundCPU := containerRec.UpperBound[corev1.ResourceCPU]
+			upperBoundMemory := containerRec.UpperBound[corev1.ResourceMemory]
+
+			if applyUpdate(containerRec.Target[corev1.ResourceCPU], lowerBoundCPU, cpuTolerance) {
+				newReq.Requests[corev1.ResourceCPU] = lowerBoundCPU
+				if !wa.Spec.AvoidCPULimit {
+					newReq.Limits[corev1.ResourceCPU] = upperBoundCPU
+				}
+			}
+			if applyUpdate(containerRec.Target[corev1.ResourceMemory], lowerBoundMemory, memoryTolerance) {
+				newReq.Requests[corev1.ResourceMemory] = lowerBoundMemory
+				newReq.Limits[corev1.ResourceMemory] = upperBoundMemory
+			}
 		}
 
 		newResources[containerRec.ContainerName] = newReq
 	}
 
 	return newResources
-}
-
-func roundUp(quantity resource.Quantity, step resource.Quantity) resource.Quantity {
-	value := quantity.AsApproximateFloat64()
-	stepValue := step.AsApproximateFloat64()
-	roundedValue := math.Ceil(value/stepValue) * stepValue
-
-	var result resource.Quantity
-	if quantity.Format == resource.DecimalSI && quantity.ScaledValue(resource.Milli) != quantity.Value() && stepValue < 1 {
-		result = *resource.NewMilliQuantity(int64(roundedValue*1000), quantity.Format)
-	} else {
-		result = *resource.NewQuantity(int64(roundedValue), quantity.Format)
-	}
-
-	// Ensure the string representation is set correctly
-	result.String()
-	return result
 }
 
 func resourceRequirementsEqual(a, b corev1.ResourceRequirements) bool {
@@ -131,6 +135,8 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.
 		updateContainers(resource.Spec.Template.Spec.Containers)
 	case *batchv1.CronJob:
 		updateContainers(resource.Spec.JobTemplate.Spec.Template.Spec.Containers)
+	case *batchv1.Job:
+		updateContainers(resource.Spec.Template.Spec.Containers)
 	case *appsv1.ReplicaSet:
 		updateContainers(resource.Spec.Template.Spec.Containers)
 	case *appsv1.DaemonSet:
