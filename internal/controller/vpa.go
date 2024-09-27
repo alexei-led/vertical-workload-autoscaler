@@ -6,8 +6,10 @@ import (
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
@@ -31,4 +33,30 @@ func (r *VerticalWorkloadAutoscalerReconciler) fetchVPA(ctx context.Context, wa 
 		return nil, err
 	}
 	return &vpa, nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) handleVPAUpdate(ctx context.Context, vpa *vpav1.VerticalPodAutoscaler) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	// Fetch the associated VWA object
+	var waList vwav1.VerticalWorkloadAutoscalerList
+	if err := r.List(ctx, &waList, client.InNamespace(vpa.Namespace)); err != nil {
+		logger.Error(err, "failed to list VerticalWorkloadAutoscaler objects")
+		return ctrl.Result{}, nil
+	}
+
+	for _, wa := range waList.Items {
+		if wa.Spec.VPAReference.Name == vpa.Name {
+			// Requeue the VWA for reconciliation
+			return r.Reconcile(ctx, ctrl.Request{
+				NamespacedName: client.ObjectKey{
+					Name:      wa.Name,
+					Namespace: wa.Namespace,
+				},
+			})
+		}
+	}
+
+	logger.Info("no associated VerticalWorkloadAutoscaler found for VPA", "VPA", vpa.Name)
+	return ctrl.Result{}, nil
 }
