@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -54,20 +55,6 @@ type VerticalWorkloadAutoscalerSpec struct {
 	// +optional
 	AllowedUpdateWindows []UpdateWindow `json:"allowedUpdateWindows"`
 
-	// StepSize represents the incremental size by which the resource requests (CPU and Memory)
-	// can be adjusted during each update. This allows for controlled and gradual scaling.
-	// For example, a step size of "200m" for CPU means that requests can be increased or decreased
-	// by 200 milliCPU units.
-	// +optional
-	StepSize ResourceRequests `json:"stepSize"`
-
-	// GracePeriod indicates the duration the VWA should wait after applying updates before
-	// making further adjustments. This allows for stabilization of the resource usage after changes.
-	// The default value is set to 30 seconds if not specified.
-	// +kubebuilder:default="30s"
-	// +optional
-	GracePeriod *metav1.Duration `json:"gracePeriod"`
-
 	// QualityOfService defines the quality of service class to be applied to the managed resource.
 	// This can help Kubernetes make scheduling decisions based on the resource guarantees.
 	// Possible values are:
@@ -85,6 +72,24 @@ type VerticalWorkloadAutoscalerSpec struct {
 	// +kubebuilder:default=true
 	// +optional
 	AvoidCPULimit bool `json:"avoidCPULimit,omitempty"`
+
+	// IgnoreCPURecommendations indicates whether to ignore scaling recommendations based on CPU usage.
+	// If set to true, the VWA will not adjust resource requests or limits based on CPU metrics.
+	// +kubebuilder:default=false
+	// +optional
+	IgnoreCPURecommendations bool `json:"ignoreCPURecommendations,omitempty"`
+
+	// IgnoreMemoryRecommendations indicates whether to ignore scaling recommendations based on memory usage.
+	// If set to true, the VWA will not adjust resource requests or limits based on memory metrics.
+	// +kubebuilder:default=false
+	// +optional
+	IgnoreMemoryRecommendations bool `json:"ignoreMemoryRecommendations,omitempty"`
+
+	// UpdateTolerance defines the tolerance for updates to resource requests.
+	// It accepts two optional subfields: cpu and memory. Both subfields should accept float values between 0 and 1.
+	// The default value for both cpu and memory is 0.10 (10%).
+	// +optional
+	UpdateTolerance *UpdateTolerance `json:"updateTolerance,omitempty"`
 }
 
 // VPAReference defines the reference to the VerticalPodAutoscaler
@@ -97,13 +102,6 @@ type HPAReference struct {
 	Name string `json:"name"`
 }
 
-// ResourceReference defines a reference to a Kubernetes resource
-type ResourceReference struct {
-	APIVersion string `json:"apiVersion"`
-	Kind       string `json:"kind"`
-	Name       string `json:"name"`
-}
-
 // UpdateWindow defines a time window for allowed updates
 type UpdateWindow struct {
 	// DayOfWeek represents the day of the week for the update window.
@@ -111,12 +109,14 @@ type UpdateWindow struct {
 	DayOfWeek string `json:"dayOfWeek"`
 
 	// StartTime represents the start of the update window
+	// +kubebuilder:validation:Pattern="^([01]?[0-9]|2[0-3]):[0-5][0-9]$"
 	// +kubebuilder:validation:required
-	StartTime metav1.Time `json:"startTime"`
+	StartTime string `json:"startTime"`
 
 	// EndTime represents the end of the update window
+	// +kubebuilder:validation:Pattern="^([01]?[0-9]|2[0-3]):[0-5][0-9]$"
 	// +kubebuilder:validation:required
-	EndTime metav1.Time `json:"endTime"`
+	EndTime string `json:"endTime"`
 
 	// TimeZone represents the time zone in IANA format, like "UTC" or "America/New_York"
 	// +kubebuilder:validation:Pattern="^[A-Za-z]+/[A-Za-z_]+$"
@@ -125,32 +125,14 @@ type UpdateWindow struct {
 
 // VerticalWorkloadAutoscalerStatus defines the observed state of VerticalWorkloadAutoscaler
 type VerticalWorkloadAutoscalerStatus struct {
-	// CurrentStatus represents the current status of the VWA.
-	// Possible values:
-	// - "Pending": VWA is being initialized.
-	// - "Active": VWA is actively managing workloads.
-	// - "Updating": VWA is applying updates to resources.
-	// - "Failed": VWA encountered an error while processing.
-	// +kubebuilder:validation:Enum=Pending;Active;Updating;Failed
-	// +optional
-	CurrentStatus string `json:"currentStatus,omitempty"`
-
-	// TargetResource defines the reference to the resource being managed by the VWA.
-	// This could reference different kinds of resources (e.g., Deployment, StatefulSet).
+	// ScaleTargetRef defines the reference to the resource being managed by the VWA.
+	// This could reference different kinds of resources (Deployment, StatefulSet, DaemonSet, ReplicaSet, CronJob, Job).
 	// +kubebuilder:validation:required
-	TargetResource ResourceReference `json:"targetResource"`
-
-	// HPAReference defines the reference to the HorizontalPodAutoscaler that is associated with the VWA.
-	// +optional
-	HPAReference *HPAReference `json:"hpaReference,omitempty"`
+	ScaleTargetRef autoscalingv2.CrossVersionObjectReference `json:"scaleTargetRef"`
 
 	// LastUpdated indicates the last time the VWA status was updated.
 	// +optional
 	LastUpdated *metav1.Time `json:"lastUpdated,omitempty"`
-
-	// CurrentRequests represents the current resource requests (CPU and Memory) for the managed resource.
-	// +optional
-	CurrentRequests ResourceRequests `json:"currentRequests,omitempty"`
 
 	// RecommendedRequests maps the recommended resource requests for the managed resource.
 	// The key is the container name, and the value is the resource requirements.
@@ -165,14 +147,6 @@ type VerticalWorkloadAutoscalerStatus struct {
 	// +optional
 	SkipReason string `json:"skipReason,omitempty"`
 
-	// StepSize defines the resource change size for each update.
-	// +optional
-	StepSize ResourceRequests `json:"stepSize,omitempty"`
-
-	// Errors contains a list of error messages encountered during the VWA's operation.
-	// +optional
-	Errors []string `json:"errors,omitempty"`
-
 	// UpdateCount represents the number of updates applied by the VWA.
 	// +optional
 	UpdateCount int32 `json:"updateCount,omitempty"`
@@ -181,14 +155,6 @@ type VerticalWorkloadAutoscalerStatus struct {
 	// about its operational state.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-	// QualityOfService defines the quality of service class being applied to the resource.
-	// Possible values:
-	// - "Guaranteed": CPU/Memory requests are equal to limits for all containers.
-	// - "Burstable": Requests are lower than limits, allowing bursts.
-	// +kubebuilder:validation:Enum=Guaranteed;Burstable
-	// +optional
-	QualityOfService string `json:"qualityOfService,omitempty"`
 
 	// Conflicts contains a list of resources that conflict with the VWA's recommendations.
 	// +optional
@@ -206,6 +172,23 @@ type ResourceRequests struct {
 	// +kubebuilder:default="128Mi"
 	// +optional
 	Memory string `json:"memory,omitempty"`
+}
+
+// UpdateTolerance defines the tolerance for updates to resource requests
+type UpdateTolerance struct {
+	// CPU tolerance for updates (as a percentage, default: 10%)
+	// +kubebuilder:default=10
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	CPU int `json:"cpu,omitempty"`
+
+	// Memory tolerance for updates (as a percentage, default: 10%)
+	// +kubebuilder:default=10
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	Memory int `json:"memory,omitempty"`
 }
 
 // +kubebuilder:object:root=true
