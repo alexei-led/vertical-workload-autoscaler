@@ -18,16 +18,22 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -49,92 +55,77 @@ type VerticalWorkloadAutoscalerReconciler struct {
 func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the VerticalWorkloadAutoscaler object
-	var wa vwav1.VerticalWorkloadAutoscaler
-	if err := r.Get(ctx, req.NamespacedName, &wa); err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("VerticalWorkloadAutoscaler resource not found. Ignoring since object must be deleted.")
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "Failed to get VerticalWorkloadAutoscaler")
-		r.updateStatusOnError(ctx, &wa, err)
-		return ctrl.Result{}, err
-	}
-
-	// Check if an update is allowed now or should be delayed
-	if delay, shouldDelay := r.shouldDelayUpdate(wa); shouldDelay {
-		logger.Info("Delaying update", "RequeueAfter", delay)
-		return ctrl.Result{RequeueAfter: delay}, nil
-	}
-
-	// Fetch the associated VPA object
-	vpa, err := r.fetchVPA(ctx, wa)
+	// Try to get the VerticalWorkloadAutoscaler instance
+	vwa, err := r.getVWA(ctx, req.NamespacedName)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("VPA not found. Ignoring since object must be deleted.")
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "Failed to fetch VPA")
-		r.updateStatusOnError(ctx, &wa, err)
-		return ctrl.Result{}, err
+		logger.Error(err, "failed to get VerticalWorkloadAutoscaler", "namespacedName", req.NamespacedName)
+		return ctrl.Result{}, nil
+	}
+	if vwa != nil {
+		// Handle the VWA object
+		return r.handleVWAChange(ctx, vwa)
 	}
 
-	// Fetch the target resource from the VPA configuration
-	targetResource, err := r.fetchTargetResource(ctx, vpa)
+	// Try to get the VerticalPodAutoscaler instance
+	vpa, err := r.getVPA(ctx, req.NamespacedName)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("Target resource not found. Ignoring since object must be deleted.")
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "Failed to fetch target resource")
-		r.updateStatusOnError(ctx, &wa, err)
-		return ctrl.Result{}, err
+		logger.Error(err, "failed to get VerticalPodAutoscaler", "namespacedName", req.NamespacedName)
+		return ctrl.Result{}, nil
+	}
+	if vpa != nil {
+		// Handle the VPA object
+		return r.handleVPAUpdate(ctx, vpa)
 	}
 
-	// Detect HPA conflicts
-	conflicts, err := r.detectHPAConflicts(ctx, targetResource)
+	// Try to get the HorizontalPodAutoscaler instance
+	hpa, err := r.getHPA(ctx, req.NamespacedName)
 	if err != nil {
-		logger.Error(err, "Failed to detect HPA conflicts")
-		r.updateStatusOnError(ctx, &wa, err)
-		return ctrl.Result{}, err
+		logger.Error(err, "failed to get HorizontalPodAutoscaler", "namespacedName", req.NamespacedName)
+		return ctrl.Result{}, nil
+	}
+	if hpa != nil {
+		// Handle the HPA object
+		return r.handleHPAUpdate(ctx, hpa)
 	}
 
-	// Handle HPA conflicts
-	if err = r.handleHPAConflicts(ctx, wa, conflicts); err != nil {
-		logger.Error(err, "Failed to handle HPA conflicts")
-		r.updateStatusOnError(ctx, &wa, err)
-		return ctrl.Result{}, err
-	}
-
-	// Calculate new resource values based on StepSize configuration
-	newResources := r.calculateNewResources(wa, vpa.Status.Recommendation)
-
-	// Update the target resource
-	updated, err := r.updateTargetResource(ctx, targetResource, newResources)
-	if err != nil {
-		logger.Error(err, "Failed to update target resource")
-		r.updateStatusOnError(ctx, &wa, err)
-		return ctrl.Result{}, err
-	}
-
-	if updated {
-		// Update annotations to force pod recreation and add GitOps conflict avoidance
-		if err = r.updateAnnotations(ctx, targetResource); err != nil {
-			logger.Error(err, "Failed to update annotations")
-			r.updateStatusOnError(ctx, &wa, err)
-			return ctrl.Result{}, err
-		}
-	}
-
-	// Update VerticalWorkloadAutoscaler status
-	if err = r.updateStatus(ctx, &wa, newResources); err != nil {
-		logger.Error(err, "Failed to update VerticalWorkloadAutoscaler status")
-		r.updateStatusOnError(ctx, &wa, err)
-		return ctrl.Result{}, err
-	}
-
-	logger.Info("Successfully reconciled VerticalWorkloadAutoscaler")
+	logger.Info("unrecognized object type, ignoring", "Object", req.NamespacedName)
 	return ctrl.Result{}, nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) getVWA(ctx context.Context, namespacedName client.ObjectKey) (*vwav1.VerticalWorkloadAutoscaler, error) {
+	var vwa vwav1.VerticalWorkloadAutoscaler
+	err := r.Get(ctx, namespacedName, &vwa)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &vwa, nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) getVPA(ctx context.Context, namespacedName client.ObjectKey) (*vpav1.VerticalPodAutoscaler, error) {
+	var vpa vpav1.VerticalPodAutoscaler
+	err := r.Get(ctx, namespacedName, &vpa)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &vpa, nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) getHPA(ctx context.Context, namespacedName client.ObjectKey) (*autoscalingv2.HorizontalPodAutoscaler, error) {
+	var hpa autoscalingv2.HorizontalPodAutoscaler
+	err := r.Get(ctx, namespacedName, &hpa)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &hpa, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -143,13 +134,19 @@ func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager
 		For(&vwav1.VerticalWorkloadAutoscaler{}).
 		Watches(
 			&vpav1.VerticalPodAutoscaler{},
-			handler.EnqueueRequestsFromMapFunc(r.findObjectsForVPA)).
+			handler.EnqueueRequestsFromMapFunc(r.findObjectsForVPA),
+			builder.WithPredicates(predicate.Funcs{
+				CreateFunc:  func(e event.CreateEvent) bool { return false },  // Ignore create
+				DeleteFunc:  func(e event.DeleteEvent) bool { return false },  // Ignore delete
+				UpdateFunc:  func(e event.UpdateEvent) bool { return true },   // Trigger only on update
+				GenericFunc: func(e event.GenericEvent) bool { return false }, // Ignore generic
+			})).
 		Watches(
 			&autoscalingv2.HorizontalPodAutoscaler{},
 			&handler.EnqueueRequestForObject{},
 		).
 		Complete(r); err != nil {
-		log.Log.Error(err, "Failed to setup controller with manager")
+		log.Log.Error(err, "failed to setup controller with manager")
 		return err
 	}
 	return nil
@@ -157,24 +154,126 @@ func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager
 
 func (r *VerticalWorkloadAutoscalerReconciler) findObjectsForVPA(_ context.Context, obj client.Object) []reconcile.Request {
 	var requests []reconcile.Request
-	var waList vwav1.VerticalWorkloadAutoscalerList
-	if err := r.List(context.Background(), &waList); err != nil {
-		log.Log.Error(err, "Failed to list VerticalWorkloadAutoscaler objects")
+	var vwaList vwav1.VerticalWorkloadAutoscalerList
+	if err := r.List(context.Background(), &vwaList); err != nil {
+		log.Log.Error(err, "failed to list VerticalWorkloadAutoscaler objects")
 		return requests
 	}
 	vpa, ok := obj.(*vpav1.VerticalPodAutoscaler)
 	if !ok {
 		return requests
 	}
-	for _, wa := range waList.Items {
-		if wa.Spec.VPAReference.Name == vpa.Name {
+	for _, vwa := range vwaList.Items {
+		if vwa.Spec.VPAReference.Name == vpa.Name {
 			requests = append(requests, reconcile.Request{
 				NamespacedName: client.ObjectKey{
-					Namespace: wa.Namespace,
-					Name:      wa.Name,
+					Namespace: vwa.Namespace,
+					Name:      vwa.Name,
 				},
 			})
 		}
 	}
 	return requests
+}
+
+// checks if there is any other VWA referencing the same VPA
+func (r *VerticalWorkloadAutoscalerReconciler) ensureNoDuplicateVWA(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler) error {
+	// List all VerticalWorkloadAutoscaler objects
+	var waList vwav1.VerticalWorkloadAutoscalerList
+	if err := r.List(ctx, &waList); err != nil {
+		return err
+	}
+
+	// Iterate through VWA objects and check for duplicates
+	for _, existingWA := range waList.Items {
+		if existingWA.Spec.VPAReference.Name == wa.Spec.VPAReference.Name && existingWA.Name != wa.Name {
+			return fmt.Errorf("VPA '%s' is already referenced by another VWA object '%s'", wa.Spec.VPAReference.Name, existingWA.Name)
+		}
+	}
+	return nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	// Ensure no duplicate VWA exists
+	if err := r.ensureNoDuplicateVWA(ctx, wa); err != nil {
+		logger.Error(err, "duplicate VWA found")
+		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonVPAReferenceConflict, fmt.Sprintf("VPA '%s' is already referenced by another VWA object", wa.Spec.VPAReference.Name)) // nolint:errcheck
+		return ctrl.Result{}, nil                                                                                                                                                                              // Avoid calling reconcile again
+	}
+
+	// Check if an update is allowed now or should be delayed
+	if delay, shouldDelay := r.shouldDelayUpdate(*wa); shouldDelay {
+		logger.Info("delaying update", "RequeueAfter", delay)
+		return ctrl.Result{RequeueAfter: delay}, nil
+	}
+
+	// Fetch the associated VPA object
+	vpa, err := r.fetchVPA(ctx, *wa)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("VPA not found: ignoring since object must be deleted")
+			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonVPAReferenceNotFound, "VPA not found") // nolint:errcheck
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "failed to fetch VPA")
+		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch VPA") // nolint:errcheck
+		return ctrl.Result{}, err                                                                                         // Retry on error
+	}
+
+	// Fetch the target resource from the VPA configuration
+	targetResource, err := r.fetchTargetResource(ctx, vpa)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("target resource not found; ignoring since object must be deleted")
+			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonTargetObjectNotFound, "target resource not found") //nolint:errcheck
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "failed to fetch target resource")
+		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch target resource") //nolint:errcheck
+		return ctrl.Result{}, err                                                                                                     // Retry on error
+	}
+
+	// Update VWA Status.ScaleTargetRef if different from VPA TargetRef
+	if !reflect.DeepEqual(wa.Status.ScaleTargetRef, vpa.Spec.TargetRef) {
+		wa.Status.ScaleTargetRef = autoscalingv2.CrossVersionObjectReference{
+			Kind:       vpa.Spec.TargetRef.Kind,
+			Name:       vpa.Spec.TargetRef.Name,
+			APIVersion: vpa.Spec.TargetRef.APIVersion,
+		}
+		if err = r.Status().Update(ctx, wa); err != nil {
+			logger.Error(err, "failed to update VWA status with new ScaleTargetRef")
+			return ctrl.Result{}, err // Retry on error
+		}
+	}
+
+	// Calculate new resource values based on StepSize configuration
+	newResources := r.calculateNewResources(*wa, vpa.Status.Recommendation)
+
+	// Update the target resource
+	updated, err := r.updateTargetResource(ctx, targetResource, newResources)
+	if err != nil {
+		logger.Error(err, "failed to update target resource")
+		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to update target resource") // nolint:errcheck
+		return ctrl.Result{}, err                                                                                                      // Retry on error
+	}
+
+	if updated {
+		// Update annotations to force pod recreation and add GitOps conflict avoidance
+		if err = r.updateAnnotations(ctx, targetResource); err != nil {
+			logger.Error(err, "failed to update annotations")
+			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to update annotations") // nolint:errcheck
+			return ctrl.Result{}, err                                                                                                  // Retry on error
+		}
+	}
+
+	// Update VerticalWorkloadAutoscaler status
+	if err = r.updateStatus(ctx, wa, newResources); err != nil {
+		logger.Error(err, "failed to update VerticalWorkloadAutoscaler status")
+		return ctrl.Result{}, err // Retry on error
+	}
+
+	logger.Info("successfully reconciled VerticalWorkloadAutoscaler")
+	return ctrl.Result{}, nil
 }
