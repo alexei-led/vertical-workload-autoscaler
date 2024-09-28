@@ -15,7 +15,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *VerticalWorkloadAutoscalerReconciler) fetchTargetResource(ctx context.Context, vpa *vpav1.VerticalPodAutoscaler) (client.Object, error) {
+const (
+	defaultCPUTolerance    = 0.10
+	defaultMemoryTolerance = 0.10
+)
+
+func (r *VerticalWorkloadAutoscalerReconciler) fetchTargetObject(ctx context.Context, vpa *vpav1.VerticalPodAutoscaler) (client.Object, error) {
 	var targetResource client.Object
 
 	switch vpa.Spec.TargetRef.Kind {
@@ -42,11 +47,30 @@ func (r *VerticalWorkloadAutoscalerReconciler) fetchTargetResource(ctx context.C
 
 // calculateNewResources calculates the new resource requirements based on the VPA recommendations
 // and the VWA configuration (tolerance, quality of service, etc.)
-func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.VerticalWorkloadAutoscaler, recommendations *vpav1.RecommendedPodResources) map[string]corev1.ResourceRequirements {
+func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.VerticalWorkloadAutoscaler, currentResources map[string]corev1.ResourceRequirements, recommendations *vpav1.RecommendedPodResources) map[string]corev1.ResourceRequirements {
 	newResources := make(map[string]corev1.ResourceRequirements)
 
-	cpuTolerance := 0.10    // default 10%
-	memoryTolerance := 0.10 // default 10%
+	cpuTolerance, memoryTolerance := getTolerances(wa)
+
+	for _, containerRec := range recommendations.ContainerRecommendations {
+		var newReq *corev1.ResourceRequirements
+		currentReq := currentResources[containerRec.ContainerName]
+
+		if wa.Spec.QualityOfService == vwav1.GuaranteedQualityOfService {
+			newReq = updateGuaranteedResources(currentReq, containerRec, cpuTolerance, memoryTolerance, wa.Spec.AvoidCPULimit)
+		} else if wa.Spec.QualityOfService == vwav1.BurstableQualityOfService {
+			newReq = updateBurstableResources(currentReq, containerRec, cpuTolerance, memoryTolerance, wa.Spec.AvoidCPULimit)
+		}
+
+		newResources[containerRec.ContainerName] = *newReq
+	}
+
+	return newResources
+}
+
+// getTolerances returns the CPU and memory tolerances based on the VWA configuration
+func getTolerances(wa vwav1.VerticalWorkloadAutoscaler) (cpuTolerance, memoryTolerance float64) {
+	cpuTolerance, memoryTolerance = defaultCPUTolerance, defaultMemoryTolerance
 
 	if wa.Spec.UpdateTolerance != nil {
 		if wa.Spec.UpdateTolerance.CPU > 0 {
@@ -56,54 +80,58 @@ func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.Ve
 			memoryTolerance = float64(wa.Spec.UpdateTolerance.Memory) / 100
 		}
 	}
+	return
+}
 
-	for _, containerRec := range recommendations.ContainerRecommendations {
-		newReq := corev1.ResourceRequirements{
-			Requests: corev1.ResourceList{},
-			Limits:   corev1.ResourceList{},
-		}
-
-		applyUpdate := func(current, recommended resource.Quantity, tolerance float64) bool {
-			if current.IsZero() {
-				return true
-			}
-			change := float64(recommended.MilliValue()-current.MilliValue()) / float64(current.MilliValue())
-			return change >= tolerance || change <= -tolerance
-		}
-
-		if wa.Spec.QualityOfService == vwav1.GuaranteedQualityOfService {
-			if applyUpdate(containerRec.Target[corev1.ResourceCPU], containerRec.Target[corev1.ResourceCPU], cpuTolerance) {
-				newReq.Requests[corev1.ResourceCPU] = containerRec.Target[corev1.ResourceCPU]
-				if !wa.Spec.AvoidCPULimit {
-					newReq.Limits[corev1.ResourceCPU] = containerRec.Target[corev1.ResourceCPU]
-				}
-			}
-			if applyUpdate(containerRec.Target[corev1.ResourceMemory], containerRec.Target[corev1.ResourceMemory], memoryTolerance) {
-				newReq.Requests[corev1.ResourceMemory] = containerRec.Target[corev1.ResourceMemory]
-				newReq.Limits[corev1.ResourceMemory] = containerRec.Target[corev1.ResourceMemory]
-			}
-		} else if wa.Spec.QualityOfService == vwav1.BurstableQualityOfService {
-			lowerBoundCPU := containerRec.LowerBound[corev1.ResourceCPU]
-			lowerBoundMemory := containerRec.LowerBound[corev1.ResourceMemory]
-			upperBoundCPU := containerRec.UpperBound[corev1.ResourceCPU]
-			upperBoundMemory := containerRec.UpperBound[corev1.ResourceMemory]
-
-			if applyUpdate(containerRec.Target[corev1.ResourceCPU], lowerBoundCPU, cpuTolerance) {
-				newReq.Requests[corev1.ResourceCPU] = lowerBoundCPU
-				if !wa.Spec.AvoidCPULimit {
-					newReq.Limits[corev1.ResourceCPU] = upperBoundCPU
-				}
-			}
-			if applyUpdate(containerRec.Target[corev1.ResourceMemory], lowerBoundMemory, memoryTolerance) {
-				newReq.Requests[corev1.ResourceMemory] = lowerBoundMemory
-				newReq.Limits[corev1.ResourceMemory] = upperBoundMemory
-			}
-		}
-
-		newResources[containerRec.ContainerName] = newReq
+// applyUpdate checks if the recommended resource is different from the current resource considering the tolerance
+func applyUpdate(current, recommended resource.Quantity, tolerance float64) bool {
+	if current.IsZero() {
+		return true
 	}
+	change := float64(recommended.MilliValue()-current.MilliValue()) / float64(current.MilliValue())
+	return change >= tolerance || change <= -tolerance
+}
 
-	return newResources
+// updateGuaranteedResources updates the resource requirements for a container with guaranteed QoS
+func updateGuaranteedResources(currentReq corev1.ResourceRequirements, containerRec vpav1.RecommendedContainerResources, cpuTolerance, memoryTolerance float64, avoidCPULimit bool) *corev1.ResourceRequirements {
+	newReq := currentReq.DeepCopy()
+
+	if applyUpdate(currentReq.Requests[corev1.ResourceCPU], containerRec.Target[corev1.ResourceCPU], cpuTolerance) {
+		newReq.Requests[corev1.ResourceCPU] = containerRec.Target[corev1.ResourceCPU]
+		if avoidCPULimit {
+			delete(newReq.Limits, corev1.ResourceCPU)
+		} else {
+			newReq.Limits[corev1.ResourceCPU] = containerRec.Target[corev1.ResourceCPU]
+		}
+	}
+	if applyUpdate(currentReq.Requests[corev1.ResourceMemory], containerRec.Target[corev1.ResourceMemory], memoryTolerance) {
+		newReq.Requests[corev1.ResourceMemory] = containerRec.Target[corev1.ResourceMemory]
+		newReq.Limits[corev1.ResourceMemory] = containerRec.Target[corev1.ResourceMemory]
+	}
+	return newReq
+}
+
+// updateBurstableResources updates the resource requirements for a container with burstable QoS
+func updateBurstableResources(currentReq corev1.ResourceRequirements, containerRec vpav1.RecommendedContainerResources, cpuTolerance, memoryTolerance float64, avoidCPULimit bool) *corev1.ResourceRequirements {
+	newReq := currentReq.DeepCopy()
+	lowerBoundCPU := containerRec.LowerBound[corev1.ResourceCPU]
+	lowerBoundMemory := containerRec.LowerBound[corev1.ResourceMemory]
+	upperBoundCPU := containerRec.UpperBound[corev1.ResourceCPU]
+	upperBoundMemory := containerRec.UpperBound[corev1.ResourceMemory]
+
+	if applyUpdate(currentReq.Requests[corev1.ResourceCPU], lowerBoundCPU, cpuTolerance) {
+		newReq.Requests[corev1.ResourceCPU] = lowerBoundCPU
+		if avoidCPULimit {
+			delete(newReq.Limits, corev1.ResourceCPU)
+		} else {
+			newReq.Limits[corev1.ResourceCPU] = upperBoundCPU
+		}
+	}
+	if applyUpdate(currentReq.Requests[corev1.ResourceMemory], lowerBoundMemory, memoryTolerance) {
+		newReq.Requests[corev1.ResourceMemory] = lowerBoundMemory
+		newReq.Limits[corev1.ResourceMemory] = upperBoundMemory
+	}
+	return newReq
 }
 
 func resourceRequirementsEqual(a, b corev1.ResourceRequirements) bool {
@@ -113,7 +141,36 @@ func resourceRequirementsEqual(a, b corev1.ResourceRequirements) bool {
 		a.Limits.Memory().Equal(*b.Limits.Memory())
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context, targetResource client.Object, newResources map[string]corev1.ResourceRequirements) (bool, error) {
+func (r *VerticalWorkloadAutoscalerReconciler) fetchCurrentResources(targetObject client.Object) (map[string]corev1.ResourceRequirements, error) {
+	currentResources := make(map[string]corev1.ResourceRequirements)
+
+	extractResources := func(containers []corev1.Container) {
+		for _, container := range containers {
+			currentResources[container.Name] = container.Resources
+		}
+	}
+
+	switch resource := targetObject.(type) {
+	case *appsv1.Deployment:
+		extractResources(resource.Spec.Template.Spec.Containers)
+	case *appsv1.StatefulSet:
+		extractResources(resource.Spec.Template.Spec.Containers)
+	case *appsv1.DaemonSet:
+		extractResources(resource.Spec.Template.Spec.Containers)
+	case *batchv1.CronJob:
+		extractResources(resource.Spec.JobTemplate.Spec.Template.Spec.Containers)
+	case *batchv1.Job:
+		extractResources(resource.Spec.Template.Spec.Containers)
+	case *appsv1.ReplicaSet:
+		extractResources(resource.Spec.Template.Spec.Containers)
+	default:
+		return nil, fmt.Errorf("unsupported target resource type: %T", targetObject)
+	}
+
+	return currentResources, nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context, targetObject client.Object, newResources map[string]corev1.ResourceRequirements) (bool, error) {
 	needsUpdate := false
 
 	updateContainers := func(containers []corev1.Container) {
@@ -128,7 +185,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.
 		}
 	}
 
-	switch resource := targetResource.(type) {
+	switch resource := targetObject.(type) {
 	case *appsv1.Deployment:
 		updateContainers(resource.Spec.Template.Spec.Containers)
 	case *appsv1.StatefulSet:
@@ -142,27 +199,27 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.
 	case *appsv1.DaemonSet:
 		updateContainers(resource.Spec.Template.Spec.Containers)
 	default:
-		return false, errors.NewBadRequest(fmt.Sprintf("unsupported target resource type: %T", targetResource))
+		return false, errors.NewBadRequest(fmt.Sprintf("unsupported target object type: %T", targetObject))
 	}
 
 	if needsUpdate {
-		if err := r.Update(ctx, targetResource); err != nil {
-			return false, errors.NewInternalError(fmt.Errorf("failed to update target resource: %w", err))
+		if err := r.Update(ctx, targetObject); err != nil {
+			return false, errors.NewInternalError(fmt.Errorf("failed to update target object: %w", err))
 		}
 	}
 	return needsUpdate, nil
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) updateAnnotations(ctx context.Context, targetResource client.Object) error {
-	annotations := targetResource.GetAnnotations()
+func (r *VerticalWorkloadAutoscalerReconciler) updateAnnotations(ctx context.Context, targetObject client.Object) error {
+	annotations := targetObject.GetAnnotations()
 	if annotations == nil {
 		annotations = make(map[string]string)
 	}
 	annotations["verticalworkloadautoscaler.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
 	annotations["argocd.argoproj.io/compare-options"] = "IgnoreResourceRequests"
 	annotations["fluxcd.io/ignore"] = "true"
-	targetResource.SetAnnotations(annotations)
-	if err := r.Update(ctx, targetResource); err != nil {
+	targetObject.SetAnnotations(annotations)
+	if err := r.Update(ctx, targetObject); err != nil {
 		return err
 	}
 	return nil

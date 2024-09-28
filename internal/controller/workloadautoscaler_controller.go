@@ -222,17 +222,17 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 		return ctrl.Result{}, err                                                                                         // Retry on error
 	}
 
-	// Fetch the target resource from the VPA configuration
-	targetResource, err := r.fetchTargetResource(ctx, vpa)
+	// Fetch the target object from the VPA configuration
+	targetResource, err := r.fetchTargetObject(ctx, vpa)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("target resource not found; ignoring since object must be deleted")
-			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonTargetObjectNotFound, "target resource not found") //nolint:errcheck
+			logger.Info("target object not found; ignoring since object must be deleted")
+			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonTargetObjectNotFound, "target object not found") //nolint:errcheck
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "failed to fetch target resource")
-		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch target resource") //nolint:errcheck
-		return ctrl.Result{}, err                                                                                                     // Retry on error
+		logger.Error(err, "failed to fetch target object")
+		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch target object") //nolint:errcheck
+		return ctrl.Result{}, err                                                                                                   // Retry on error
 	}
 
 	// Update VWA Status.ScaleTargetRef if different from VPA TargetRef
@@ -248,8 +248,16 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 		}
 	}
 
+	// fetch current resources of the target object
+	currentResources, err := r.fetchCurrentResources(targetResource)
+	if err != nil {
+		logger.Error(err, "failed to fetch current resources")
+		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch current resources") // nolint:errcheck
+		return ctrl.Result{}, err                                                                                                       // Retry on error
+	}
+
 	// Calculate new resource values based on StepSize configuration
-	newResources := r.calculateNewResources(*wa, vpa.Status.Recommendation)
+	newResources := r.calculateNewResources(*wa, currentResources, vpa.Status.Recommendation)
 
 	// Update the target resource
 	updated, err := r.updateTargetResource(ctx, targetResource, newResources)
