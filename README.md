@@ -8,15 +8,15 @@ VerticalWorkloadAutoscaler extends the capabilities of the Vertical Pod Autoscal
 
 ## Key Features
 
-- **Controlled Updates**: Instead of immediate pod evictions, the Workload Autoscaler updates the resource requests in the Deployment/StatefulSet/DaemonSet spec, triggering controlled pod updates based on specified configurations.
+- **Controlled Updates**: Instead of immediate pod evictions, the Workload Autoscaler updates the resource requests in the Deployment/StatefulSet/DaemonSet/ReplicaSet/CronJob/Job spec, triggering controlled pod updates based on specified configurations.
 - **Configurable Parameters**:
-  - **Frequency of Updates**: Configure how often updates are applied to avoid too frequent changes.
-  - **Allowed Update Windows**: Define time windows during which updates are allowed, reducing the risk of applying changes during peak usage times.
-  - **Step Size**: Set the increment or decrement size for resource changes to avoid frequent minor adjustments and ensure updates are applied in meaningful steps.
-  - **Grace Period**: Specify a grace period before applying changes to minimize disruptions.
-  - **Min/Max Boundaries**: Define minimum and maximum resource limits to prevent resource exhaustion or over-provisioning.
-  - **Compatibility Checks**: Ensure compatibility with HPA, KEDA, StatefulSets, and DaemonSets to avoid conflicts and manage scaling effectively.
-  - **Timezone Support**: Ensure that allowed update windows are respected according to the specified timezones. If no allowed update windows are set, updates happen immediately.
+  - **Frequency of Updates**: Specify how often the Workload Autoscaler should check and apply updates to resource requests. This helps in avoiding too frequent changes that might disrupt the workload.
+  - **Allowed Update Windows**: Define specific time windows during which updates to resource requests are permitted. This reduces the risk of applying changes during peak usage times, ensuring minimal disruption.
+  - **Timezone Support**: Ensure that the allowed update windows are respected according to the specified timezones. If no allowed update windows are set, updates happen immediately.
+  - **Update Tolerance**: Set the tolerance for updates to resource requests. This defines the acceptable range for changes, helping to avoid unnecessary updates for minor fluctuations.
+  - **Avoid CPU Limits**: Prevent the Workload Autoscaler from setting CPU limits on the managed resource. This can be beneficial in scenarios where burstable workloads are expected, avoiding potential performance issues.
+  - **Ignore CPU Recommendations**: Configure the Workload Autoscaler to ignore scaling recommendations based on CPU usage. This is automatically enabled when there is an HPA or KEDA scaling for the same target object based on CPU metrics.
+  - **Ignore Memory Recommendations**:Configure the Workload Autoscaler to ignore scaling recommendations based on memory usage. This is automatically enabled when there is an HPA or KEDA scaling for the same target object based on memory metrics.
 
 ## Getting Started
 
