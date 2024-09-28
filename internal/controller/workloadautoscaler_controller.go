@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -222,8 +221,15 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 		return ctrl.Result{}, err                                                                                         // Retry on error
 	}
 
+	// if VPA has no recommendations, nothing to do
+	if vpa.Status.Recommendation == nil {
+		logger.Info("VPA has no recommendations")
+		r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionFalse, ReasonNoRecommendation, "VPA has no recommendations yet") // nolint:errcheck
+		return ctrl.Result{}, nil                                                                                                             // Avoid calling reconcile again
+	}
+
 	// Fetch the target object from the VPA configuration
-	targetResource, err := r.fetchTargetObject(ctx, vpa)
+	targetObject, err := r.fetchTargetObject(ctx, vpa)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("target object not found; ignoring since object must be deleted")
@@ -236,7 +242,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	}
 
 	// Update VWA Status.ScaleTargetRef if different from VPA TargetRef
-	if !reflect.DeepEqual(wa.Status.ScaleTargetRef, vpa.Spec.TargetRef) {
+	if wa.Status.ScaleTargetRef.Name != vpa.Spec.TargetRef.Name || wa.Status.ScaleTargetRef.Kind != vpa.Spec.TargetRef.Kind {
 		wa.Status.ScaleTargetRef = autoscalingv2.CrossVersionObjectReference{
 			Kind:       vpa.Spec.TargetRef.Kind,
 			Name:       vpa.Spec.TargetRef.Name,
@@ -249,7 +255,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	}
 
 	// fetch current resources of the target object
-	currentResources, err := r.fetchCurrentResources(targetResource)
+	currentResources, err := r.fetchCurrentResources(targetObject)
 	if err != nil {
 		logger.Error(err, "failed to fetch current resources")
 		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch current resources") // nolint:errcheck
@@ -260,7 +266,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	newResources := r.calculateNewResources(*wa, currentResources, vpa.Status.Recommendation)
 
 	// Update the target resource
-	updated, err := r.updateTargetResource(ctx, targetResource, newResources)
+	updated, err := r.updateTargetResource(ctx, targetObject, newResources)
 	if err != nil {
 		logger.Error(err, "failed to update target resource")
 		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to update target resource") // nolint:errcheck
@@ -269,7 +275,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 
 	if updated {
 		// Update annotations to force pod recreation and add GitOps conflict avoidance
-		if err = r.updateAnnotations(ctx, targetResource); err != nil {
+		if err = r.updateAnnotations(ctx, targetObject); err != nil {
 			logger.Error(err, "failed to update annotations")
 			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to update annotations") // nolint:errcheck
 			return ctrl.Result{}, err                                                                                                  // Retry on error

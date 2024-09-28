@@ -23,6 +23,8 @@ const (
 	ReasonVPAReferenceNotFound = "VPAReferenceNotFound"
 	// ReasonTargetObjectNotFound is the condition reason for target object not found
 	ReasonTargetObjectNotFound = "TargetObjectNotFound"
+	// ReasonNoRecommendation is the condition reason for no recommendation
+	ReasonNoRecommendation = "NoRecommendation"
 	// ReasonAPIError is the condition reason for Kubernetes API error
 	ReasonAPIError = "APIError"
 )

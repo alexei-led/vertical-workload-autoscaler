@@ -21,28 +21,32 @@ const (
 )
 
 func (r *VerticalWorkloadAutoscalerReconciler) fetchTargetObject(ctx context.Context, vpa *vpav1.VerticalPodAutoscaler) (client.Object, error) {
-	var targetResource client.Object
+	if vpa.Spec.TargetRef == nil {
+		return nil, fmt.Errorf("targetRef is not set")
+	}
+
+	var targetObject client.Object
 
 	switch vpa.Spec.TargetRef.Kind {
 	case "Deployment":
-		targetResource = &appsv1.Deployment{}
+		targetObject = &appsv1.Deployment{}
 	case "StatefulSet":
-		targetResource = &appsv1.StatefulSet{}
+		targetObject = &appsv1.StatefulSet{}
 	case "CronJob":
-		targetResource = &batchv1.CronJob{}
+		targetObject = &batchv1.CronJob{}
 	case "ReplicaSet":
-		targetResource = &appsv1.ReplicaSet{}
+		targetObject = &appsv1.ReplicaSet{}
 	case "DaemonSet":
-		targetResource = &appsv1.DaemonSet{}
+		targetObject = &appsv1.DaemonSet{}
 	default:
 		return nil, fmt.Errorf("unsupported target resource kind: %s", vpa.Spec.TargetRef.Kind)
 	}
 
-	err := r.Get(ctx, client.ObjectKey{Name: vpa.Spec.TargetRef.Name, Namespace: vpa.Namespace}, targetResource)
+	err := r.Get(ctx, client.ObjectKey{Name: vpa.Spec.TargetRef.Name, Namespace: vpa.Namespace}, targetObject)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get target resource %s/%s: %w", vpa.Namespace, vpa.Spec.TargetRef.Name, err)
 	}
-	return targetResource, nil
+	return targetObject, nil
 }
 
 // calculateNewResources calculates the new resource requirements based on the VPA recommendations
