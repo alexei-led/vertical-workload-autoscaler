@@ -201,7 +201,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	if err := r.ensureNoDuplicateVWA(ctx, wa); err != nil {
 		logger.Error(err, "duplicate VWA found")
 		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonVPAReferenceConflict, fmt.Sprintf("VPA '%s' is already referenced by another VWA object", wa.Spec.VPAReference.Name)) // nolint:errcheck
-		return ctrl.Result{}, nil                                                                                                                                                                              // Avoid calling reconcile again
+		return ctrl.Result{}, err                                                                                                                                                                              // Return error to indicate failure and retry                                                                                                                                                                              // Avoid calling reconcile again
 	}
 
 	// Check if an update is allowed now or should be delayed
