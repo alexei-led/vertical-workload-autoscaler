@@ -13,10 +13,63 @@ import (
 func (r *VerticalWorkloadAutoscalerReconciler) handleHPAUpdate(ctx context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// fetch target resource of the HPA
-	hpaTarget := hpa.Spec.ScaleTargetRef
+	if !shouldHandleHPA(hpa) {
+		return ctrl.Result{}, nil
+	}
 
-	// check HPA metrics (CPU/Memory)
+	vwa, err := r.findMatchingVWA(ctx, hpa)
+	if err != nil {
+		logger.Error(err, "failed to list VWAs")
+		return ctrl.Result{}, nil
+	}
+	if vwa == nil {
+		return ctrl.Result{}, nil
+	}
+
+	ignoreCPU, ignoreMemory := getIgnoreFlags(hpa)
+	if !hpa.DeletionTimestamp.IsZero() {
+		ignoreCPU = false
+		ignoreMemory = false
+	}
+
+	if updateVWA(vwa, ignoreCPU, ignoreMemory) {
+		if err = r.Update(ctx, vwa); err != nil {
+			logger.Error(err, "failed to update VWA with HPA conflicts")
+			return ctrl.Result{}, nil
+		}
+	}
+
+	logger.Info("successfully handled HPA update")
+	return ctrl.Result{}, nil
+}
+
+func shouldHandleHPA(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
+	for _, metric := range hpa.Spec.Metrics {
+		if metric.Type == autoscalingv2.ResourceMetricSourceType {
+			if metric.Resource.Name == "cpu" || metric.Resource.Name == "memory" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) findMatchingVWA(ctx context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler) (*vwav1.VerticalWorkloadAutoscaler, error) {
+	var vwaList vwav1.VerticalWorkloadAutoscalerList
+	if err := r.List(ctx, &vwaList, client.InNamespace(hpa.Namespace)); err != nil {
+		return nil, client.IgnoreNotFound(err)
+	}
+
+	hpaTarget := hpa.Spec.ScaleTargetRef
+	for _, wa := range vwaList.Items {
+		if wa.Status.ScaleTargetRef.Kind == hpaTarget.Kind && wa.Status.ScaleTargetRef.Name == hpaTarget.Name {
+			return &wa, nil
+		}
+	}
+	return nil, nil
+}
+
+func getIgnoreFlags(hpa *autoscalingv2.HorizontalPodAutoscaler) (bool, bool) {
 	ignoreCPU := false
 	ignoreMemory := false
 	for _, metric := range hpa.Spec.Metrics {
@@ -28,46 +81,10 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleHPAUpdate(ctx context.Conte
 			}
 		}
 	}
+	return ignoreCPU, ignoreMemory
+}
 
-	// if metrics are not based on CPU or Memory, nothing to do
-	if !ignoreCPU && !ignoreMemory {
-		return ctrl.Result{}, nil
-	}
-
-	// fetch the corresponding VWA object
-	var vwaList vwav1.VerticalWorkloadAutoscalerList
-	if err := r.List(ctx, &vwaList, client.InNamespace(hpa.Namespace)); err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			logger.Info("no VWA found for the HPA target", "hpa", hpa.Name)
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "failed to list VWAs")
-		return ctrl.Result{}, nil
-	}
-
-	// find VWA that references the same target as the HPA
-	var vwa *vwav1.VerticalWorkloadAutoscaler
-	for _, wa := range vwaList.Items {
-		currentWA := wa
-		if currentWA.Status.ScaleTargetRef.Kind == hpaTarget.Kind && currentWA.Status.ScaleTargetRef.Name == hpaTarget.Name {
-			vwa = &currentWA
-			break
-		}
-	}
-
-	// no matching VWA, nothing to do
-	if vwa == nil {
-		return ctrl.Result{}, nil
-	}
-
-	// if the HPA is going to be deleted, reset the ignore properties
-	// the update event will be triggered before the delete event because Kubernetes will add DeletionTimestamp before deleting an object
-	if !hpa.DeletionTimestamp.IsZero() {
-		ignoreCPU = false
-		ignoreMemory = false
-	}
-
-	// update the VWA Object’s ignore properties
+func updateVWA(vwa *vwav1.VerticalWorkloadAutoscaler, ignoreCPU, ignoreMemory bool) bool {
 	updateNeeded := false
 	if vwa.Spec.IgnoreCPURecommendations != ignoreCPU {
 		vwa.Spec.IgnoreCPURecommendations = ignoreCPU
@@ -77,15 +94,5 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleHPAUpdate(ctx context.Conte
 		vwa.Spec.IgnoreMemoryRecommendations = ignoreMemory
 		updateNeeded = true
 	}
-
-	if updateNeeded {
-		// update the VWA object
-		if err := r.Update(ctx, vwa); err != nil {
-			logger.Error(err, "failed to update VWA with HPA conflicts")
-			return ctrl.Result{}, nil
-		}
-	}
-
-	logger.Info("successfully handled HPA update")
-	return ctrl.Result{}, nil
+	return updateNeeded
 }
