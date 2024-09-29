@@ -21,26 +21,26 @@ This document outlines the steps required to implement a working version of the 
 
 ## 3. Implement the controller logic
 
-- [ ] Implement the Reconcile function in `internal/controller/workloadautoscaler_controller.go`
-- [ ] Implement necessary helper functions in `internal/controller/`
+- [x] Implement the Reconcile function in `internal/controller/workloadautoscaler_controller.go`
+- [x] Implement necessary helper functions in `internal/controller/`
 
 ## 4. Implement helper functions
 
-- [ ] Create `vpa.go`, `resources.go`, and `update_checker.go` in `internal/controller/`
+- [x] Create `vpa.go`, `resources.go`, and `update_checker.go` in `internal/controller/`
 
 ## 5. Update RBAC permissions
 
-- [ ] Modify `config/rbac/role.yaml` to include necessary permissions:
-  - [ ] Add permissions to watch and modify Deployments, StatefulSets, CronJobs, and DaemonSets
-  - [ ] Add permissions to read VPA objects
+- [x] Modify `config/rbac/role.yaml` to include necessary permissions:
+  - [x] Add permissions to watch and modify Deployments, StatefulSets, CronJobs, and DaemonSets
+  - [x] Add permissions to read VPA objects
 
 ## 6. Implement logging
 
-- [ ] Use the controller-runtime's logger to log all actions and decisions
+- [x] Use the controller-runtime's logger to log all actions and decisions
 
 ## 7. Update the main.go file
 
-- [ ] Modify `cmd/main.go` to set up the controller with the manager
+- [x] Modify `cmd/main.go` to set up the controller with the manager
 
 ## 8. Write unit tests
 
