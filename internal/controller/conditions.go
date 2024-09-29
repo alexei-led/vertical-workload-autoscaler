@@ -37,7 +37,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateStatusCondition(ctx context
 	newCondition := metav1.Condition{
 		Type:               conditionType,
 		Status:             status,
-		LastTransitionTime: metav1.Now(),
+		LastTransitionTime: metav1.NewTime(timeNow()),
 		Reason:             reason,
 		Message:            message,
 	}
