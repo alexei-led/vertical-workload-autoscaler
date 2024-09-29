@@ -25,10 +25,6 @@ func TestUpdateTargetResource(t *testing.T) {
 	// set up the scheme for the fake client
 	s := scheme.Scheme
 	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.Deployment{})
-	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.StatefulSet{})
-	s.AddKnownTypes(appsv1.SchemeGroupVersion, &batchv1.CronJob{})
-	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.ReplicaSet{})
-	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.DaemonSet{})
 
 	// Create a fake client with a sample Deployment
 	client := fake.NewClientBuilder().WithScheme(s).Build()
@@ -407,8 +403,9 @@ func TestFetchTargetObject(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test-vpa", Namespace: "default"},
 				Spec: vpav1.VerticalPodAutoscalerSpec{
 					TargetRef: &autoscalingv1.CrossVersionObjectReference{
-						Kind: "CronJob",
-						Name: "test-cronjob",
+						Kind:       "CronJob",
+						Name:       "test-cronjob",
+						APIVersion: "batch/v1",
 					},
 				},
 			},
