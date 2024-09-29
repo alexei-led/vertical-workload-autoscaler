@@ -198,7 +198,11 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.
 	needsUpdate := false
 
 	updateContainers := func(containers []corev1.Container) {
-		for _, container := range containers {
+		for i := range containers {
+			// Update the container resources if they are different from the recommended resources
+			// and the container is present in the recommendations
+			// use reference to avoid closure variable capture
+			container := &containers[i]
 			if recommendedResources, ok := newResources[container.Name]; ok {
 				if !resourceRequirementsEqual(container.Resources, recommendedResources) {
 					recommendedResources.Requests.DeepCopyInto(&container.Resources.Requests)
