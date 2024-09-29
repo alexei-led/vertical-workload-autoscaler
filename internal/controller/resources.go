@@ -56,6 +56,11 @@ func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.Ve
 
 	cpuTolerance, memoryTolerance := getTolerances(wa)
 
+	// Default QualityOfService to Guaranteed if not set
+	if wa.Spec.QualityOfService == "" {
+		wa.Spec.QualityOfService = vwav1.GuaranteedQualityOfService
+	}
+
 	for _, containerRec := range recommendations.ContainerRecommendations {
 		var newReq *corev1.ResourceRequirements
 		currentReq := currentResources[containerRec.ContainerName]
@@ -100,6 +105,13 @@ func applyUpdate(current, recommended resource.Quantity, tolerance float64) bool
 func updateGuaranteedResources(currentReq corev1.ResourceRequirements, containerRec vpav1.RecommendedContainerResources, cpuTolerance, memoryTolerance float64, avoidCPULimit bool) *corev1.ResourceRequirements {
 	newReq := currentReq.DeepCopy()
 
+	if newReq.Requests == nil {
+		newReq.Requests = corev1.ResourceList{}
+	}
+	if newReq.Limits == nil {
+		newReq.Limits = corev1.ResourceList{}
+	}
+
 	if applyUpdate(currentReq.Requests[corev1.ResourceCPU], containerRec.Target[corev1.ResourceCPU], cpuTolerance) {
 		newReq.Requests[corev1.ResourceCPU] = containerRec.Target[corev1.ResourceCPU]
 		if avoidCPULimit {
@@ -118,6 +130,14 @@ func updateGuaranteedResources(currentReq corev1.ResourceRequirements, container
 // updateBurstableResources updates the resource requirements for a container with burstable QoS
 func updateBurstableResources(currentReq corev1.ResourceRequirements, containerRec vpav1.RecommendedContainerResources, cpuTolerance, memoryTolerance float64, avoidCPULimit bool) *corev1.ResourceRequirements {
 	newReq := currentReq.DeepCopy()
+
+	if newReq.Requests == nil {
+		newReq.Requests = corev1.ResourceList{}
+	}
+	if newReq.Limits == nil {
+		newReq.Limits = corev1.ResourceList{}
+	}
+
 	lowerBoundCPU := containerRec.LowerBound[corev1.ResourceCPU]
 	lowerBoundMemory := containerRec.LowerBound[corev1.ResourceMemory]
 	upperBoundCPU := containerRec.UpperBound[corev1.ResourceCPU]

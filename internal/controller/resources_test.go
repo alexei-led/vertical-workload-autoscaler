@@ -791,6 +791,62 @@ func TestUpdateGuaranteedResources(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Update when currentReq does not have Limits set",
+			currentReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
+			},
+			containerRec: vpav1.RecommendedContainerResources{
+				Target: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("300m"),
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+			},
+			cpuTolerance:    0.1,
+			memoryTolerance: 0.1,
+			avoidCPULimit:   false,
+			expectedReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("300m"),
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("300m"),
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+			},
+		},
+		{
+			name: "Update when currentReq does not have Requests set",
+			currentReq: corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+			},
+			containerRec: vpav1.RecommendedContainerResources{
+				Target: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("300m"),
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+			},
+			cpuTolerance:    0.1,
+			memoryTolerance: 0.1,
+			avoidCPULimit:   false,
+			expectedReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("300m"),
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("300m"),
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -990,6 +1046,70 @@ func TestUpdateBurstableResources(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Update when currentReq does not have Limits set",
+			currentReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
+			},
+			containerRec: vpav1.RecommendedContainerResources{
+				LowerBound: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("300m"),
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+				UpperBound: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("500m"),
+					corev1.ResourceMemory: resource.MustParse("800Mi"),
+				},
+			},
+			cpuTolerance:    0.1,
+			memoryTolerance: 0.1,
+			avoidCPULimit:   false,
+			expectedReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("300m"),
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("500m"),
+					corev1.ResourceMemory: resource.MustParse("800Mi"),
+				},
+			},
+		},
+		{
+			name: "Update when currentReq does not have Requests set",
+			currentReq: corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+			},
+			containerRec: vpav1.RecommendedContainerResources{
+				LowerBound: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("300m"),
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+				UpperBound: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("500m"),
+					corev1.ResourceMemory: resource.MustParse("800Mi"),
+				},
+			},
+			cpuTolerance:    0.1,
+			memoryTolerance: 0.1,
+			avoidCPULimit:   false,
+			expectedReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("300m"),
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("500m"),
+					corev1.ResourceMemory: resource.MustParse("800Mi"),
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1182,6 +1302,49 @@ func TestCalculateNewResources(t *testing.T) {
 					Limits: corev1.ResourceList{
 						corev1.ResourceCPU:    resource.MustParse("500m"),
 						corev1.ResourceMemory: resource.MustParse("800Mi"),
+					},
+				},
+			},
+		},
+		{
+			name: "Default QoS to Guaranteed",
+			wa: vwav1.VerticalWorkloadAutoscaler{
+				Spec: vwav1.VerticalWorkloadAutoscalerSpec{
+					AvoidCPULimit: false,
+				},
+			},
+			currentResources: map[string]corev1.ResourceRequirements{
+				"test-container": {
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("100m"),
+						corev1.ResourceMemory: resource.MustParse("200Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("200m"),
+						corev1.ResourceMemory: resource.MustParse("400Mi"),
+					},
+				},
+			},
+			recommendations: &vpav1.RecommendedPodResources{
+				ContainerRecommendations: []vpav1.RecommendedContainerResources{
+					{
+						ContainerName: "test-container",
+						Target: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("300m"),
+							corev1.ResourceMemory: resource.MustParse("600Mi"),
+						},
+					},
+				},
+			},
+			expected: map[string]corev1.ResourceRequirements{
+				"test-container": {
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("300m"),
+						corev1.ResourceMemory: resource.MustParse("600Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("300m"),
+						corev1.ResourceMemory: resource.MustParse("600Mi"),
 					},
 				},
 			},
