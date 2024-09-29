@@ -154,7 +154,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager
 }
 
 func (r *VerticalWorkloadAutoscalerReconciler) findObjectsForVPA(_ context.Context, obj client.Object) []reconcile.Request {
-	var requests []reconcile.Request
+	requests := make([]reconcile.Request, 0)
 	var vwaList vwav1.VerticalWorkloadAutoscalerList
 	if err := r.List(context.Background(), &vwaList); err != nil {
 		log.Log.Error(err, "failed to list VerticalWorkloadAutoscaler objects")
