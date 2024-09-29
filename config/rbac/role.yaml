@@ -5,6 +5,16 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  - deployments
+  - replicasets
+  - statefulsets
+  verbs:
+  - get
+  - list
+- apiGroups:
   - autoscaling
   resources:
   - horizontalpodautoscalers
@@ -40,3 +50,11 @@ rules:
   - verticalworkloadautoscalers/finalizers
   verbs:
   - update
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  - jobs
+  verbs:
+  - get
+  - list
