@@ -1,6 +1,7 @@
 run:
   timeout: 5m
   allow-parallel-runners: true
+  tests: false
 
 issues:
   # don't skip warning about doc comments
@@ -19,9 +20,9 @@ issues:
 linters:
   disable-all: true
   enable:
+    - copyloopvar
     - dupl
     - errcheck
-    - exportloopref
     - ginkgolinter
     - goconst
     - gocyclo
