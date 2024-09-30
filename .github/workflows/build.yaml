@@ -1,0 +1,115 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - '*'
+    tags:
+      - '*'
+    paths-ignore:
+      - 'config/**'
+      - '*.md'
+      - '*.yaml'
+      - '*.sh'
+      - 'PROJECTS'
+  pull_request:
+    branches:
+      - '*'
+
+jobs:
+
+  validate:
+
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.head_commit.message,'[skip ci]') }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.60.1
+          only-new-issues: true
+          skip-pkg-cache: true
+          args: --config .golangci.yaml --verbose ./...
+
+      - name: test
+        shell: sh
+        env:
+          CGO_ENABLED: 0
+        run: |
+          make test
+
+  docker-build:
+
+    runs-on: ubuntu-latest
+    needs: validate
+    # build only on master branch and tags
+    if: ${{
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      (
+      (github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/'))) ||
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
+      )
+      }}
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+
+      - name: get short sha
+        id: short_sha
+        run: echo ::set-output name=sha::$(git rev-parse --short HEAD)
+
+      - name: get version
+        id: version
+        run: echo ::set-output name=version::$([[ -z "${{ github.event.pull_request.number }}" ]] && echo "sha-${{ steps.short_sha.outputs.sha }}" || echo "pr-${{ github.event.pull_request.number }}")
+
+      - name: set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: set up Docker buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: prepare meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+          labels: |
+            github.run.id=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            org.opencontainers.image.title=vwa-controller
+            org.opencontainers.image.description=Vertical Workload Autoscaler Controller
+
+      - name: build and push
+        uses: docker/build-push-action@v6
+        with:
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            COMMIT=${{ steps.short_sha.outputs.sha }}
+            BRANCH=${{ github.ref_name }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
