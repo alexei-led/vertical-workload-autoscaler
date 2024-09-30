@@ -84,13 +84,27 @@ The VWA supports adding custom annotations to the target object. This is particu
 
 ## Installation
 
-To install the VWA CRD, apply the following CRD manifest:
+### VPA Recommender
 
-```bash
-kubectl apply -f path_to_vwa_crd.yaml
+The VerticalWorkloadAutoscaler requires the VerticalPodAutoscaler (VPA) Recommender to provide resource recommendations. The VPA Recommender should be installed in the cluster before deploying the VWA. You can install the VPA Recommender using Fairwinds' Helm chart:
+
+```sh
+helm repo add fairwinds-stable https://charts.fairwinds.com/stable
+helm install vpa fairwinds-stable/vpa --version 4.6.0 --set "recommender.enabled=true,updater.enabled=false,admissionController.enabled=false,metrics-server.enabled=true,recommender.image.tag=1.2.1" --namespace vpa --create-namespace
 ```
 
-Then, deploy the VWA controller to manage VerticalWorkloadAutoscaler resources in your cluster.
+The Fairwinds' VPA Helm chart can also install metrics-server, which is required for the VPA Recommender to function correctly.
+
+### Vertical Workload Autoscaler (VWA)
+
+To install the VerticalWorkloadAutoscaler run the following command:
+
+```sh
+# Install the CRDs
+make install
+# Deploy the controller
+make deploy
+```
 
 ## Project Development
 
