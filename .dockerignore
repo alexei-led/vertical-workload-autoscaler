@@ -1,3 +1,17 @@
 # More info: https://docs.docker.com/engine/reference/builder/#dockerignore-file
 # Ignore build and test binaries.
 bin/
+
+# Ignore configuration files that may contain sensitive information
+*.env
+*.in
+*.out
+config
+
+# ignore generated files
+dist/
+demo/
+
+# IDE support files
+.idea
+.vscode

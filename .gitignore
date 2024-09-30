@@ -7,6 +7,16 @@
 bin/*
 Dockerfile.cross
 
+# configuration files that may contain sensitive information
+*.env
+*.in
+
+# demo files
+demo/
+
+# dist files
+dist/
+
 # Test binary, built with `go test -c`
 *.test
 
