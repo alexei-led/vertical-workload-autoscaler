@@ -8,59 +8,54 @@ metadata:
 spec:
   vpaReference:
     name: my-vpa
-    namespace: default
-
-  target:
-    selector:
-      matchLabels:
-        app: my-application
-    resourceReference:
-      apiVersion: apps/v1
-      kind: Deployment
-      name: my-deployment
-
-  stepSize:
-    cpu: "100m"
-    memory: "100Mi"
 
   allowedUpdateWindows:
-    - dayOfWeek: "Monday"
+    - dayOfWeek: Monday
       startTime: "09:00"
       endTime: "17:00"
       timeZone: "UTC"
-    - dayOfWeek: "Friday"
+    - dayOfWeek: Friday
       startTime: "09:00"
       endTime: "12:00"
       timeZone: "UTC"
 
-  updateFrequency:
-    duration: "10m"
-
-  gracePeriod:
-    duration: "5m"
+  avoidCPULimit: true
+  customAnnotations:
+    custom-key: custom-value
+  ignoreCPURecommendations: false
+  ignoreMemoryRecommendations: false
+  qualityOfService: Guaranteed
+  updateFrequency: 10m
+  updateTolerance:
+    cpu: 10
+    memory: 10
 
 status:
-  currentStatus: "Active"
-  targetedResource:
-    kind: "Deployment"
-    name: "my-deployment"
   lastUpdated: "2024-09-21T12:00:00Z"
-  currentRequests:
-    cpu: "500m"
-    memory: "512Mi"
   recommendedRequests:
-    cpu: "600m"
-    memory: "600Mi"
-  skippedUpdates: true
+    my-container:
+      requests:
+        cpu: "600m"
+        memory: "600Mi"
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-deployment
   skipReason: "Change below step size"
-  stepSize:
-    cpu: "100m"
-    memory: "100Mi"
-  errors:
-    - "Failed to update my-deployment: resource conflict"
+  skippedUpdates: true
   updateCount: 3
   conditions:
-    - type: "Ready"
+    - type: Ready
       status: "True"
-    - type: "Updating"
+      lastTransitionTime: "2024-09-21T12:00:00Z"
+      reason: Ready
+      message: "VWA is ready and operational"
+    - type: Updating
       status: "False"
+      lastTransitionTime: "2024-09-21T12:00:00Z"
+      reason: NoUpdateInProgress
+      message: "No update is currently in progress"
+  conflicts:
+    - resource: my-deployment
+      conflictWith: manual-setting
+      reason: "Manually set resource limits conflict with VWA recommendations"

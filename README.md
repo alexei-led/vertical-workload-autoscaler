@@ -1,24 +1,98 @@
-# vertical-workload-autoscaler
+# VerticalWorkloadAutoscaler (VWA)
 
-VerticalWorkloadAutoscaler (VWA) is a Kubernetes-native solution designed to enhance Vertical Pod Autoscaler (VPA) functionality by providing configurable and controlled resource updates for workloads. It offers granular control over update windows, step sizes, and compatibility with Horizontal Pod Autoscalers (HPA), KEDA, StatefulSets, and DaemonSets. The solution avoids immediate pod evictions, ensuring smooth resource adjustments for improved performance and cost efficiency.
+The `VerticalWorkloadAutoscaler` (VWA) is a Kubernetes Custom Resource Definition (CRD) designed to manage the vertical scaling of Kubernetes workloads. By integrating with the VerticalPodAutoscaler (VPA), the VWA provides advanced control over resource allocation. It offers features such as scheduled update windows, custom tolerances, and support for various workload types like Deployments, StatefulSets, DaemonSets, CronJobs, and Jobs. The VWA helps optimize resource utilization, improve performance, and reduce costs by dynamically adjusting resource requests based on workload requirements. It can also work in conjunction with HorizontalPodAutoscalers (HPA) and other scaling controllers to prevent conflicts and ensure smooth scaling operations.
 
-## Description
+## Features
 
-VerticalWorkloadAutoscaler extends the capabilities of the Vertical Pod Autoscaler (VPA) by introducing more control over how and when resource updates are applied to your workloads. This includes defining specific update windows, step sizes for resource adjustments, and ensuring compatibility with other Kubernetes components like HPA, KEDA, StatefulSets, and DaemonSets. This approach helps in maintaining performance and cost efficiency without causing disruptions due to immediate pod evictions.
+- **Allowed Update Windows**: Define time windows during which updates to resource requests are allowed, minimizing disruptions during peak usage times.
+- **Avoid CPU Limit**: Option to avoid setting CPU limits, ensuring only resource requests are adjusted (useful for burstable workloads).
+- **Custom Annotations**: Apply custom annotations to the target object, which can prevent GitOps tools from reverting updates made by VWA.
+- **Quality of Service (QoS)**: Control the QoS class applied to managed resources, with support for `Guaranteed` and `Burstable` classes.
+- **Resource Recommendation Filtering**: Options to ignore CPU or memory recommendations, allowing selective scaling.
+- **Conflict Detection**: Track and report conflicts with HorizontalPodAutoscalers (HPA) and other scaling controllers.
+- **Update Tolerance**: Fine-tune how sensitive the VWA is to changes in resource requests based on CPU and memory usage.
 
-## Key Features
+## CRD Overview
 
-- **Controlled Updates**: Instead of immediate pod evictions, the Workload Autoscaler updates the resource requests in the Deployment/StatefulSet/DaemonSet/ReplicaSet/CronJob/Job spec, triggering controlled pod updates based on specified configurations.
-- **Configurable Parameters**:
-  - **Frequency of Updates**: Specify how often the Workload Autoscaler should check and apply updates to resource requests. This helps in avoiding too frequent changes that might disrupt the workload.
-  - **Allowed Update Windows**: Define specific time windows during which updates to resource requests are permitted. This reduces the risk of applying changes during peak usage times, ensuring minimal disruption.
-  - **Timezone Support**: Ensure that the allowed update windows are respected according to the specified timezones. If no allowed update windows are set, updates happen immediately.
-  - **Update Tolerance**: Set the tolerance for updates to resource requests. This defines the acceptable range for changes, helping to avoid unnecessary updates for minor fluctuations.
-  - **Avoid CPU Limits**: Prevent the Workload Autoscaler from setting CPU limits on the managed resource. This can be beneficial in scenarios where burstable workloads are expected, avoiding potential performance issues.
-  - **Ignore CPU Recommendations**: Configure the Workload Autoscaler to ignore scaling recommendations based on CPU usage. This is automatically enabled when there is an HPA or KEDA scaling for the same target object based on CPU metrics.
-  - **Ignore Memory Recommendations**:Configure the Workload Autoscaler to ignore scaling recommendations based on memory usage. This is automatically enabled when there is an HPA or KEDA scaling for the same target object based on memory metrics.
+The VWA CRD includes the following key properties:
 
-## Getting Started
+### `spec`:
+
+- `allowedUpdateWindows`: Specifies time windows during which updates are allowed, minimizing disruptions at critical times.
+- `avoidCPULimit`: A boolean field to disable CPU limit settings in the workload.
+- `customAnnotations`: Annotations that will be added to the target workload resource.
+- `ignoreCPURecommendations`: Disables the CPU-based scaling if set to true.
+- `ignoreMemoryRecommendations`: Disables the memory-based scaling if set to true.
+- `qualityOfService`: Defines the QoS class ("Guaranteed" or "Burstable") for the managed resources.
+- `updateFrequency`: Controls how often the VWA checks and applies updates to resource requests (default: 5 minutes).
+- `updateTolerance`: Defines thresholds for ignoring minor changes in CPU and memory recommendations.
+- `vpaReference`: References the associated VPA object to manage vertical scaling.
+
+### `status`:
+
+- `recommendedRequests`: The current recommended resource requests for the managed resource.
+- `scaleTargetRef`: Reference to the resource being managed (e.g., Deployment, StatefulSet, DaemonSet).
+- `conflicts`: Lists any conflicts detected with other autoscalers (e.g., HPA).
+- `skippedUpdates`: Indicates if updates were skipped.
+- `updateCount`: Total number of updates applied.
+
+## Example Usage
+
+Here's an example of a VerticalWorkloadAutoscaler configuration:
+
+```yaml
+apiVersion: autoscaling.k8s.io/v1alpha1
+kind: VerticalWorkloadAutoscaler
+metadata:
+  name: example-vwa
+  namespace: default
+spec:
+  vpaReference:
+    name: example-vpa
+  allowedUpdateWindows:
+    - dayOfWeek: Monday
+      startTime: "09:00"
+      endTime: "17:00"
+      timeZone: "America/New_York"
+  avoidCPULimit: true
+  customAnnotations:
+    annotation-key: "annotation-value"
+  ignoreCPURecommendations: false
+  ignoreMemoryRecommendations: true
+  qualityOfService: Guaranteed
+  updateFrequency: 10m
+  updateTolerance:
+    cpu: 0.15  # 15% tolerance for CPU
+    memory: 0.20  # 20% tolerance for memory
+```
+
+In this example:
+
+- The VWA references a VerticalPodAutoscaler (`example-vpa`).
+- Updates are only allowed on Mondays between 9 AM and 5 PM, in the `America/New_York` time zone.
+- CPU limits are avoided, and memory recommendations are ignored.
+- The VWA will check for updates every 10 minutes.
+- CPU and memory requests will only be adjusted if they differ by more than 15% or 20%, respectively.
+
+## Conflict Detection
+
+The VWA will detect conflicts with other autoscaler controllers, such as HorizontalPodAutoscalers (HPA) and KEDA. When a conflict is detected, the VWA will ignore CPU and/or memory recommendations to prevent interference with other scaling controllers that use resource metrics. The VWA will report any conflicts in the `status.conflicts` field.
+
+## Annotations for GitOps Compatibility
+
+The VWA supports adding custom annotations to the target object. This is particularly useful in scenarios where GitOps tools like ArgoCD or Flux continuously manage the cluster state. By adding a specific annotation to the target object, the VWA can prevent these tools from reverting the changes made by the VWA.
+
+## Installation
+
+To install the VWA CRD, apply the following CRD manifest:
+
+```bash
+kubectl apply -f path_to_vwa_crd.yaml
+```
+
+Then, deploy the VWA controller to manage VerticalWorkloadAutoscaler resources in your cluster.
+
+## Project Development
 
 ### Prerequisites
 
@@ -98,7 +172,7 @@ file in the dist directory. This file contains all the resources built
 with Kustomize, which are necessary to install this project without
 its dependencies.
 
-2. Using the installer
+1. Using the installer
 
 Users can just run kubectl apply -f <URL for YAML BUNDLE> to install the project, i.e.:
 
