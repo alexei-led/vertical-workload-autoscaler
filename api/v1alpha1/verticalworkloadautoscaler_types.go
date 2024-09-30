@@ -20,7 +20,11 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
+
+// SchemeGroupVersion is group version used to register these objects
+var SchemeGroupVersion = schema.GroupVersion{Group: "autoscaling.k8s.io", Version: "v1alpha1"}
 
 // QualityOfServiceClass defines the quality of service class
 // Only Burstable and Guaranteed are supported
@@ -90,6 +94,10 @@ type VerticalWorkloadAutoscalerSpec struct {
 	// The default value for both cpu and memory is 0.10 (10%).
 	// +optional
 	UpdateTolerance *UpdateTolerance `json:"updateTolerance,omitempty"`
+
+	// CustomAnnotations holds a map of annotations that will be applied to the target object.
+	// +optional
+	CustomAnnotations map[string]string `json:"customAnnotations,omitempty"`
 }
 
 // VPAReference defines the reference to the VerticalPodAutoscaler

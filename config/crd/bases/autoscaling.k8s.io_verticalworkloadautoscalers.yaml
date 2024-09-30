@@ -90,6 +90,12 @@ spec:
                   If set to true, only resource requests will be set, which may be beneficial in scenarios
                   where burstable workloads are expected. The default value is true.
                 type: boolean
+              customAnnotations:
+                additionalProperties:
+                  type: string
+                description: CustomAnnotations holds a map of annotations that will
+                  be applied to the target object.
+                type: object
               ignoreCPURecommendations:
                 default: false
                 description: |-
