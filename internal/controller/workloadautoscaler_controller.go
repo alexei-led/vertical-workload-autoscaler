@@ -268,20 +268,11 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	newResources := r.calculateNewResources(*wa, currentResources, vpa.Status.Recommendation)
 
 	// Update the target resource
-	updated, err := r.updateTargetResource(ctx, targetObject, newResources)
+	err = r.updateTargetObject(ctx, targetObject, wa, newResources)
 	if err != nil {
 		logger.Error(err, "failed to update target resource")
 		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to update target resource") // nolint:errcheck
 		return ctrl.Result{}, err                                                                                                      // Retry on error
-	}
-
-	if updated {
-		// Update annotations to force pod recreation and add GitOps conflict avoidance
-		if err = r.updateAnnotations(ctx, targetObject); err != nil {
-			logger.Error(err, "failed to update annotations")
-			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to update annotations") // nolint:errcheck
-			return ctrl.Result{}, err                                                                                                  // Retry on error
-		}
 	}
 
 	// Update VerticalWorkloadAutoscaler status

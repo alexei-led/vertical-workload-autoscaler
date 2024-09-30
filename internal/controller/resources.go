@@ -194,7 +194,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) fetchCurrentResources(targetObjec
 	return currentResources, nil
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.Context, targetObject client.Object, newResources map[string]corev1.ResourceRequirements) (bool, error) {
+func (r *VerticalWorkloadAutoscalerReconciler) updateTargetObject(ctx context.Context, targetObject client.Object, vwa *vwav1.VerticalWorkloadAutoscaler, newResources map[string]corev1.ResourceRequirements) error {
 	needsUpdate := false
 
 	updateContainers := func(containers []corev1.Container) {
@@ -227,28 +227,31 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateTargetResource(ctx context.
 	case *appsv1.DaemonSet:
 		updateContainers(resource.Spec.Template.Spec.Containers)
 	default:
-		return false, errors.NewBadRequest(fmt.Sprintf("unsupported target object type: %T", targetObject))
+		return errors.NewBadRequest(fmt.Sprintf("unsupported target object type: %T", targetObject))
 	}
 
 	if needsUpdate {
+		r.setAnnotations(targetObject, vwa)
 		if err := r.Update(ctx, targetObject); err != nil {
-			return false, errors.NewInternalError(fmt.Errorf("failed to update target object: %w", err))
+			return errors.NewInternalError(fmt.Errorf("failed to update target object: %w", err))
 		}
 	}
-	return needsUpdate, nil
+	return nil
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) updateAnnotations(ctx context.Context, targetObject client.Object) error {
-	annotations := targetObject.GetAnnotations()
-	if annotations == nil {
-		annotations = make(map[string]string)
+func (r *VerticalWorkloadAutoscalerReconciler) setAnnotations(targetObject client.Object, vwa *vwav1.VerticalWorkloadAutoscaler) {
+	// get the target object current annotations
+	targetAnnotations := targetObject.GetAnnotations()
+	if targetAnnotations == nil {
+		targetAnnotations = make(map[string]string)
 	}
-	annotations["verticalworkloadautoscaler.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
-	annotations["argocd.argoproj.io/compare-options"] = "IgnoreResourceRequests"
-	annotations["fluxcd.io/ignore"] = "true"
-	targetObject.SetAnnotations(annotations)
-	if err := r.Update(ctx, targetObject); err != nil {
-		return err
+	// copy the annotations to the target object annotations
+	for k, v := range vwa.Spec.CustomAnnotations {
+		targetAnnotations[k] = v
 	}
-	return nil
+	// add VWA specific annotations
+	targetAnnotations["verticalworkloadautoscaler.kubernetes.io/lastUpdated"] = timeNow().Format(time.RFC3339)
+	targetAnnotations["verticalworkloadautoscaler.kubernetes.io/updatedBy"] = vwa.Name
+	// set the target object annotations
+	targetObject.SetAnnotations(targetAnnotations)
 }

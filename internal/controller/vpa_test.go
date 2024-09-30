@@ -12,8 +12,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
-	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -64,8 +64,8 @@ func TestVPARecommendationChangedPredicate_Update(t *testing.T) {
 
 func TestFetchVPA(t *testing.T) {
 	ctx := context.TODO()
-	s := scheme.Scheme
-	_ = vpav1.AddToScheme(s)
+	s := runtime.NewScheme()
+	s.AddKnownTypes(vpav1.SchemeGroupVersion, &vpav1.VerticalPodAutoscaler{})
 
 	vpa := &vpav1.VerticalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
@@ -98,9 +98,10 @@ func TestFetchVPA(t *testing.T) {
 
 func TestHandleVPAUpdate(t *testing.T) {
 	ctx := context.TODO()
-	s := scheme.Scheme
-	_ = vpav1.AddToScheme(s)
-	_ = vwav1.AddToScheme(s)
+	s := runtime.NewScheme()
+	s.AddKnownTypes(vpav1.SchemeGroupVersion, &vpav1.VerticalPodAutoscaler{})
+	s.AddKnownTypes(vwav1.SchemeGroupVersion, &vwav1.VerticalWorkloadAutoscaler{})
+	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.Deployment{})
 
 	vpa := &vpav1.VerticalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{

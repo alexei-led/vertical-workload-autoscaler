@@ -2,8 +2,8 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"testing"
+	"time"
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -12,19 +12,19 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/apimachinery/pkg/runtime"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
-	"k8s.io/client-go/kubernetes/scheme"
 	_client "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestUpdateTargetResource(t *testing.T) {
+func TestUpdateTargetObject(t *testing.T) {
 	// set up the scheme for the fake client
-	s := scheme.Scheme
+	s := runtime.NewScheme()
 	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.Deployment{})
+	s.AddKnownTypes(appsv1.SchemeGroupVersion, &corev1.Pod{})
 
 	// Create a fake client with a sample Deployment
 	client := fake.NewClientBuilder().WithScheme(s).Build()
@@ -33,6 +33,19 @@ func TestUpdateTargetResource(t *testing.T) {
 	r := &VerticalWorkloadAutoscalerReconciler{
 		Client: client,
 		Scheme: s,
+	}
+
+	// Create a sample VWA object
+	vwa := &vwav1.VerticalWorkloadAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-vwa",
+			Namespace: "default",
+		},
+		Spec: vwav1.VerticalWorkloadAutoscalerSpec{
+			CustomAnnotations: map[string]string{
+				"annotation-key": "annotation-value",
+			},
+		},
 	}
 
 	// Define test cases
@@ -111,12 +124,19 @@ func TestUpdateTargetResource(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create target resource: %v", err)
 			}
-			updated, err := r.updateTargetResource(context.TODO(), tt.targetResource, tt.newResources)
+			err = r.updateTargetObject(context.TODO(), tt.targetResource, vwa, tt.newResources)
 			if tt.expectedError {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				assert.True(t, updated)
+				// Check if annotations are set correctly
+				annotations := tt.targetResource.GetAnnotations()
+				assert.Equal(t, "annotation-value", annotations["annotation-key"])
+				// Check if resources are updated correctly
+				deployment := tt.targetResource.(*appsv1.Deployment)
+				container := deployment.Spec.Template.Spec.Containers[0]
+				assert.Equal(t, tt.newResources["test-container"].Requests, container.Resources.Requests)
+				assert.Equal(t, tt.newResources["test-container"].Limits, container.Resources.Limits)
 			}
 		})
 	}
@@ -259,94 +279,14 @@ func TestResourceRequirementsEqual(t *testing.T) {
 	}
 }
 
-type errorClient struct {
-	_client.Client
-}
-
-func (e *errorClient) Update(_ context.Context, _ _client.Object, _ ..._client.UpdateOption) error {
-	return fmt.Errorf("client error")
-}
-
-func (e *errorClient) Watch(_ context.Context, _ _client.ObjectList, _ ..._client.ListOption) (watch.Interface, error) {
-	return nil, fmt.Errorf("client error")
-}
-
-func TestUpdateAnnotations(t *testing.T) {
-	tests := []struct {
-		name           string
-		targetResource _client.Object
-		expectedError  bool
-	}{
-		{
-			name: "Add annotations to resource without existing annotations",
-			targetResource: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-deployment", Namespace: "default"},
-			},
-			expectedError: false,
-		},
-		{
-			name: "Update annotations for resource with existing annotations",
-			targetResource: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-deployment",
-					Namespace: "default",
-					Annotations: map[string]string{
-						"existing-annotation": "value",
-					},
-				},
-			},
-			expectedError: false,
-		},
-		{
-			name: "Fail to update annotations due to client error",
-			targetResource: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-deployment", Namespace: "default"},
-			},
-			expectedError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
-			r := &VerticalWorkloadAutoscalerReconciler{
-				Client: client,
-				Scheme: scheme.Scheme,
-			}
-
-			// Create the target resource before updating
-			err := r.Client.Create(context.TODO(), tt.targetResource)
-			if err != nil {
-				t.Fatalf("failed to create target resource: %v", err)
-			}
-
-			if tt.expectedError {
-				client = &errorClient{Client: client}
-				r.Client = client
-			}
-
-			err = r.updateAnnotations(context.TODO(), tt.targetResource)
-			if tt.expectedError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				annotations := tt.targetResource.GetAnnotations()
-				assert.NotNil(t, annotations)
-				assert.Contains(t, annotations, "verticalworkloadautoscaler.kubernetes.io/restartedAt")
-				assert.Contains(t, annotations, "argocd.argoproj.io/compare-options")
-				assert.Contains(t, annotations, "fluxcd.io/ignore")
-			}
-		})
-	}
-}
-
 func TestFetchTargetObject(t *testing.T) {
-	s := scheme.Scheme
+	s := runtime.NewScheme()
 	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.Deployment{})
 	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.StatefulSet{})
 	s.AddKnownTypes(batchv1.SchemeGroupVersion, &batchv1.CronJob{})
 	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.ReplicaSet{})
 	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.DaemonSet{})
+	s.AddKnownTypes(corev1.SchemeGroupVersion, &corev1.Pod{})
 
 	client := fake.NewClientBuilder().WithScheme(s).Build()
 	r := &VerticalWorkloadAutoscalerReconciler{
@@ -1397,6 +1337,97 @@ func TestCalculateNewResources(t *testing.T) {
 			r := &VerticalWorkloadAutoscalerReconciler{}
 			result := r.calculateNewResources(tt.wa, tt.currentResources, tt.recommendations)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestSetAnnotations(t *testing.T) {
+	tests := []struct {
+		name                string
+		targetObject        _client.Object
+		vwa                 *vwav1.VerticalWorkloadAutoscaler
+		expectedAnnotations map[string]string
+	}{
+		{
+			name: "Add custom annotations",
+			targetObject: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment",
+					Namespace: "default",
+				},
+			},
+			vwa: &vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vwa",
+					Namespace: "default",
+				},
+				Spec: vwav1.VerticalWorkloadAutoscalerSpec{
+					CustomAnnotations: map[string]string{
+						"annotation-key": "annotation-value",
+					},
+				},
+			},
+			expectedAnnotations: map[string]string{
+				"annotation-key": "annotation-value",
+				"verticalworkloadautoscaler.kubernetes.io/lastUpdated": timeNow().Format(time.RFC3339),
+				"verticalworkloadautoscaler.kubernetes.io/updatedBy":   "test-vwa",
+			},
+		},
+		{
+			name: "Overwrite existing annotations",
+			targetObject: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"annotation-key": "old-value",
+					},
+				},
+			},
+			vwa: &vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vwa",
+					Namespace: "default",
+				},
+				Spec: vwav1.VerticalWorkloadAutoscalerSpec{
+					CustomAnnotations: map[string]string{
+						"annotation-key": "new-value",
+					},
+				},
+			},
+			expectedAnnotations: map[string]string{
+				"annotation-key": "new-value",
+				"verticalworkloadautoscaler.kubernetes.io/lastUpdated": timeNow().Format(time.RFC3339),
+				"verticalworkloadautoscaler.kubernetes.io/updatedBy":   "test-vwa",
+			},
+		},
+		{
+			name: "Add VWA specific annotations",
+			targetObject: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment",
+					Namespace: "default",
+				},
+			},
+			vwa: &vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vwa",
+					Namespace: "default",
+				},
+				Spec: vwav1.VerticalWorkloadAutoscalerSpec{},
+			},
+			expectedAnnotations: map[string]string{
+				"verticalworkloadautoscaler.kubernetes.io/lastUpdated": timeNow().Format(time.RFC3339),
+				"verticalworkloadautoscaler.kubernetes.io/updatedBy":   "test-vwa",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &VerticalWorkloadAutoscalerReconciler{}
+			r.setAnnotations(tt.targetObject, tt.vwa)
+			assert.Equal(t, tt.expectedAnnotations, tt.targetObject.GetAnnotations())
 		})
 	}
 }
