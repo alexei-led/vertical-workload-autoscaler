@@ -120,6 +120,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=local,src=/tmp/.buildx-cache  # Use local cache for faster builds.
+          cache-to: type=local,dest=/tmp/.buildx-cache,mode=max  # Save cache after build.
 
       - name: generate artifact attestation
         uses: actions/attest-build-provenance@v1
