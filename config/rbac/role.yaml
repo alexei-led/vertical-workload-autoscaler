@@ -14,6 +14,7 @@ rules:
   verbs:
   - get
   - list
+  - watch
 - apiGroups:
   - autoscaling
   resources:
@@ -51,6 +52,15 @@ rules:
   verbs:
   - update
 - apiGroups:
+  - autoscaling.workload.io
+  resources:
+  - verticalworkloadautoscalers/status
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - batch
   resources:
   - cronjobs
@@ -58,3 +68,4 @@ rules:
   verbs:
   - get
   - list
+  - watch
