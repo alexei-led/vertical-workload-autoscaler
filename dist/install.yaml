@@ -12,9 +12,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.1
-  name: verticalworkloadautoscalers.autoscaling.k8s.io
+  name: verticalworkloadautoscalers.autoscaling.workload.io
 spec:
-  group: autoscaling.k8s.io
+  group: autoscaling.workload.io
   names:
     kind: VerticalWorkloadAutoscaler
     listKind: VerticalWorkloadAutoscalerList
@@ -446,7 +446,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - autoscaling.k8s.io
+  - autoscaling.workload.io
   resources:
   - verticalworkloadautoscalers
   verbs:
@@ -458,7 +458,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - autoscaling.k8s.io
+  - autoscaling.workload.io
   resources:
   - verticalworkloadautoscalers/finalizers
   verbs:
@@ -509,7 +509,7 @@ metadata:
   name: vertical-workload-autoscaler-verticalworkloadautoscaler-editor-role
 rules:
 - apiGroups:
-  - autoscaling.k8s.io
+  - autoscaling.workload.io
   resources:
   - verticalworkloadautoscalers
   verbs:
@@ -521,7 +521,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - autoscaling.k8s.io
+  - autoscaling.workload.io
   resources:
   - verticalworkloadautoscalers/status
   verbs:
@@ -536,7 +536,7 @@ metadata:
   name: vertical-workload-autoscaler-verticalworkloadautoscaler-viewer-role
 rules:
 - apiGroups:
-  - autoscaling.k8s.io
+  - autoscaling.workload.io
   resources:
   - verticalworkloadautoscalers
   verbs:
@@ -544,7 +544,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - autoscaling.k8s.io
+  - autoscaling.workload.io
   resources:
   - verticalworkloadautoscalers/status
   verbs:

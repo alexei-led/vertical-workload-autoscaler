@@ -41,7 +41,7 @@ The VWA CRD includes the following key properties:
 Here's an example of a VerticalWorkloadAutoscaler configuration:
 
 ```yaml
-apiVersion: autoscaling.k8s.io/v1alpha1
+apiVersion: autoscaling.workload.io/v1alpha1
 kind: VerticalWorkloadAutoscaler
 metadata:
   name: example-vwa

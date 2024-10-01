@@ -1,4 +1,4 @@
 ## Append samples of your project ##
 resources:
-- autoscaling.k8s.io_v1alpha1_workloadautoscaler.yaml
+- autoscaling.workload.io_v1alpha1_verticalworkloadautoscaler.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

@@ -2,7 +2,7 @@
 # This file is used to track the info used to scaffold your project
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
-domain: k8s.io
+domain: workload.io
 layout:
 - go.kubebuilder.io/v4
 projectName: vertical-workload-autoscaler
@@ -12,7 +12,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: k8s.io
+  domain: workload.io
   group: autoscaling
   kind: VerticalWorkloadAutoscaler
   path: github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1

@@ -42,8 +42,8 @@ type VerticalWorkloadAutoscalerReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalworkloadautoscalers/finalizers,verbs=update
+// +kubebuilder:rbac:groups=autoscaling.workload.io,resources=verticalworkloadautoscalers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=autoscaling.workload.io,resources=verticalworkloadautoscalers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalpodautoscalers,verbs=get;list;watch

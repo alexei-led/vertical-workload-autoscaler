@@ -1,4 +1,4 @@
-apiVersion: autoscaling.k8s.io/v1alpha1
+apiVersion: autoscaling.workload.io/v1alpha1
 kind: VerticalWorkloadAutoscaler
 metadata:
   labels:
