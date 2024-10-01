@@ -57,7 +57,8 @@ jobs:
     permissions:
       packages: write
       contents: read
-      id-token: write # This is required for requesting the JWT
+      id-token: write
+      attestations: write
 
     # build only on master branch and tags
     if: ${{
@@ -127,6 +128,6 @@ jobs:
       - name: generate artifact attestation
         uses: actions/attest-build-provenance@v1
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
