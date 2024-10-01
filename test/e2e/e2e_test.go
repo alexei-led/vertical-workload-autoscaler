@@ -27,7 +27,7 @@ import (
 	"github.com/alexei-led/vertical-workload-autoscaler/test/utils"
 )
 
-const namespace = "vertical-workload-autoscaler-system"
+const namespace = "vwa"
 
 var _ = Describe("controller", Ordered, func() {
 	BeforeAll(func() {
