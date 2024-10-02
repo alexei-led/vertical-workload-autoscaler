@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
@@ -10,99 +9,31 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
-	_client "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
-
-func TestUpdateVWA(t *testing.T) {
-	tests := []struct {
-		name                 string
-		vwa                  *vwav1.VerticalWorkloadAutoscaler
-		ignoreCPU            bool
-		ignoreMemory         bool
-		expectedUpdate       bool
-		expectedIgnoreCPU    bool
-		expectedIgnoreMemory bool
-	}{
-		{
-			name: "No update needed",
-			vwa: &vwav1.VerticalWorkloadAutoscaler{
-				Spec: vwav1.VerticalWorkloadAutoscalerSpec{
-					IgnoreCPURecommendations:    false,
-					IgnoreMemoryRecommendations: false,
-				},
-			},
-			ignoreCPU:            false,
-			ignoreMemory:         false,
-			expectedUpdate:       false,
-			expectedIgnoreCPU:    false,
-			expectedIgnoreMemory: false,
-		},
-		{
-			name: "Update CPU recommendation",
-			vwa: &vwav1.VerticalWorkloadAutoscaler{
-				Spec: vwav1.VerticalWorkloadAutoscalerSpec{
-					IgnoreCPURecommendations:    false,
-					IgnoreMemoryRecommendations: false,
-				},
-			},
-			ignoreCPU:            true,
-			ignoreMemory:         false,
-			expectedUpdate:       true,
-			expectedIgnoreCPU:    true,
-			expectedIgnoreMemory: false,
-		},
-		{
-			name: "Update Memory recommendation",
-			vwa: &vwav1.VerticalWorkloadAutoscaler{
-				Spec: vwav1.VerticalWorkloadAutoscalerSpec{
-					IgnoreCPURecommendations:    false,
-					IgnoreMemoryRecommendations: false,
-				},
-			},
-			ignoreCPU:            false,
-			ignoreMemory:         true,
-			expectedUpdate:       true,
-			expectedIgnoreCPU:    false,
-			expectedIgnoreMemory: true,
-		},
-		{
-			name: "Update both recommendations",
-			vwa: &vwav1.VerticalWorkloadAutoscaler{
-				Spec: vwav1.VerticalWorkloadAutoscalerSpec{
-					IgnoreCPURecommendations:    false,
-					IgnoreMemoryRecommendations: false,
-				},
-			},
-			ignoreCPU:            true,
-			ignoreMemory:         true,
-			expectedUpdate:       true,
-			expectedIgnoreCPU:    true,
-			expectedIgnoreMemory: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			updated := updateVWA(tt.vwa, tt.ignoreCPU, tt.ignoreMemory)
-			assert.Equal(t, tt.expectedUpdate, updated)
-			assert.Equal(t, tt.expectedIgnoreCPU, tt.vwa.Spec.IgnoreCPURecommendations)
-			assert.Equal(t, tt.expectedIgnoreMemory, tt.vwa.Spec.IgnoreMemoryRecommendations)
-		})
-	}
-}
 
 func TestGetIgnoreFlags(t *testing.T) {
 	tests := []struct {
-		name                 string
-		hpa                  *autoscalingv2.HorizontalPodAutoscaler
-		expectedIgnoreCPU    bool
-		expectedIgnoreMemory bool
+		name           string
+		hpa            *autoscalingv2.HorizontalPodAutoscaler
+		expectedCPU    bool
+		expectedMemory bool
 	}{
 		{
-			name: "HPA with CPU metric",
+			name: "No metrics",
 			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "hpa1", Namespace: "default"},
+				Spec:       autoscalingv2.HorizontalPodAutoscalerSpec{},
+			},
+			expectedCPU:    false,
+			expectedMemory: false,
+		},
+		{
+			name: "CPU metric present",
+			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "hpa2", Namespace: "default"},
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 					Metrics: []autoscalingv2.MetricSpec{
 						{
@@ -114,12 +45,13 @@ func TestGetIgnoreFlags(t *testing.T) {
 					},
 				},
 			},
-			expectedIgnoreCPU:    true,
-			expectedIgnoreMemory: false,
+			expectedCPU:    true,
+			expectedMemory: false,
 		},
 		{
-			name: "HPA with Memory metric",
+			name: "Memory metric present",
 			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "hpa3", Namespace: "default"},
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 					Metrics: []autoscalingv2.MetricSpec{
 						{
@@ -131,12 +63,13 @@ func TestGetIgnoreFlags(t *testing.T) {
 					},
 				},
 			},
-			expectedIgnoreCPU:    false,
-			expectedIgnoreMemory: true,
+			expectedCPU:    false,
+			expectedMemory: true,
 		},
 		{
-			name: "HPA with both CPU and Memory metrics",
+			name: "Both CPU and Memory metrics present",
 			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "hpa4", Namespace: "default"},
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 					Metrics: []autoscalingv2.MetricSpec{
 						{
@@ -154,507 +87,211 @@ func TestGetIgnoreFlags(t *testing.T) {
 					},
 				},
 			},
-			expectedIgnoreCPU:    true,
-			expectedIgnoreMemory: true,
-		},
-		{
-			name: "HPA with no CPU or Memory metrics",
-			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					Metrics: []autoscalingv2.MetricSpec{
-						{
-							Type: autoscalingv2.PodsMetricSourceType,
-						},
-					},
-				},
-			},
-			expectedIgnoreCPU:    false,
-			expectedIgnoreMemory: false,
+			expectedCPU:    true,
+			expectedMemory: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ignoreCPU, ignoreMemory := getIgnoreFlags(tt.hpa)
-			assert.Equal(t, tt.expectedIgnoreCPU, ignoreCPU)
-			assert.Equal(t, tt.expectedIgnoreMemory, ignoreMemory)
+			r := &VerticalWorkloadAutoscalerReconciler{
+				Client: fake.NewClientBuilder().WithStatusSubresource(&autoscalingv2.HorizontalPodAutoscaler{}).Build(),
+			}
+			ignoreCPU, ignoreMemory := r.getIgnoreFlags(tt.hpa)
+			assert.Equal(t, tt.expectedCPU, ignoreCPU)
+			assert.Equal(t, tt.expectedMemory, ignoreMemory)
 		})
 	}
 }
 
-// fakeClientWithError is a mock client that returns an error on List
-type fakeClientWithError struct {
-	_client.Client
-}
+func TestFindHPAForVWA(t *testing.T) {
+	s := runtime.NewScheme()
+	_ = vwav1.AddToScheme(s)
+	_ = autoscalingv2.AddToScheme(s)
 
-func (c *fakeClientWithError) List(ctx context.Context, list _client.ObjectList, opts ..._client.ListOption) error {
-	return fmt.Errorf("simulated list error")
-}
-
-func (c *fakeClientWithError) Watch(ctx context.Context, obj _client.ObjectList, opts ..._client.ListOption) (watch.Interface, error) {
-	return nil, fmt.Errorf("simulated watch error")
-}
-
-func TestFindMatchingVWA(t *testing.T) {
 	tests := []struct {
-		name        string
-		hpa         *autoscalingv2.HorizontalPodAutoscaler
-		vwaList     vwav1.VerticalWorkloadAutoscalerList
-		expectedVWA *vwav1.VerticalWorkloadAutoscaler
-		expectError bool
+		name          string
+		vwa           *vwav1.VerticalWorkloadAutoscaler
+		hpaList       *autoscalingv2.HorizontalPodAutoscalerList
+		expectedHPA   *autoscalingv2.HorizontalPodAutoscaler
+		expectedError bool
+	}{
+		{
+			name: "Matching HPA found",
+			vwa: &vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vwa",
+					Namespace: "default",
+				},
+				Status: vwav1.VerticalWorkloadAutoscalerStatus{
+					ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+						Name: "test-deployment",
+						Kind: "Deployment",
+					},
+				},
+			},
+			hpaList: &autoscalingv2.HorizontalPodAutoscalerList{
+				Items: []autoscalingv2.HorizontalPodAutoscaler{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-hpa",
+							Namespace: "default",
+						},
+						Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+							ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+								Name: "test-deployment",
+								Kind: "Deployment",
+							},
+						},
+					},
+				},
+			},
+			expectedHPA: &autoscalingv2.HorizontalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "test-hpa",
+					Namespace:       "default",
+					ResourceVersion: "999",
+				},
+				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+					ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+						Name: "test-deployment",
+						Kind: "Deployment",
+					},
+				},
+			},
+			expectedError: false,
+		},
+		{
+			name: "No matching HPA found",
+			vwa: &vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vwa",
+					Namespace: "default",
+				},
+				Status: vwav1.VerticalWorkloadAutoscalerStatus{
+					ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+						Name: "test-deployment",
+						Kind: "Deployment",
+					},
+				},
+			},
+			hpaList: &autoscalingv2.HorizontalPodAutoscalerList{
+				Items: []autoscalingv2.HorizontalPodAutoscaler{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-hpa",
+							Namespace: "default",
+						},
+						Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+							ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+								Name: "another-deployment",
+								Kind: "Deployment",
+							},
+						},
+					},
+				},
+			},
+			expectedHPA:   nil,
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(tt.hpaList).Build()
+			r := &VerticalWorkloadAutoscalerReconciler{
+				Client: client,
+			}
+
+			hpa, err := r.findHPAForVWA(context.TODO(), tt.vwa)
+			if tt.expectedError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedHPA, hpa)
+			}
+		})
+	}
+}
+
+func TestFindVWAForHPA(t *testing.T) {
+	s := runtime.NewScheme()
+	_ = vwav1.AddToScheme(s)
+	_ = autoscalingv2.AddToScheme(s)
+
+	tests := []struct {
+		name         string
+		hpa          *autoscalingv2.HorizontalPodAutoscaler
+		vwaList      *vwav1.VerticalWorkloadAutoscalerList
+		expectedReqs []reconcile.Request
 	}{
 		{
 			name: "Matching VWA found",
 			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-hpa",
-					Namespace: "default",
-				},
+				ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 					ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-						Kind: "Deployment",
 						Name: "test-deployment",
+						Kind: "Deployment",
 					},
 				},
 			},
-			vwaList: vwav1.VerticalWorkloadAutoscalerList{
+			vwaList: &vwav1.VerticalWorkloadAutoscalerList{
 				Items: []vwav1.VerticalWorkloadAutoscaler{
 					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "test-vwa",
-							Namespace: "default",
-						},
+						ObjectMeta: metav1.ObjectMeta{Name: "test-vwa", Namespace: "default"},
 						Status: vwav1.VerticalWorkloadAutoscalerStatus{
 							ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-								Kind: "Deployment",
 								Name: "test-deployment",
+								Kind: "Deployment",
 							},
 						},
 					},
 				},
 			},
-			expectedVWA: &vwav1.VerticalWorkloadAutoscaler{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:            "test-vwa",
-					Namespace:       "default",
-					ResourceVersion: "1",
-				},
-				Status: vwav1.VerticalWorkloadAutoscalerStatus{
-					ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-						Kind: "Deployment",
-						Name: "test-deployment",
-					},
+			expectedReqs: []reconcile.Request{
+				{
+					NamespacedName: client.ObjectKey{Name: "test-vwa", Namespace: "default"},
 				},
 			},
-			expectError: false,
 		},
 		{
 			name: "No matching VWA found",
 			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-hpa",
-					Namespace: "default",
-				},
+				ObjectMeta: metav1.ObjectMeta{Name: "test-hpa", Namespace: "default"},
 				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
 					ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-						Kind: "Deployment",
 						Name: "test-deployment",
+						Kind: "Deployment",
 					},
 				},
 			},
-			vwaList: vwav1.VerticalWorkloadAutoscalerList{
+			vwaList: &vwav1.VerticalWorkloadAutoscalerList{
 				Items: []vwav1.VerticalWorkloadAutoscaler{
 					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "test-vwa",
-							Namespace: "default",
-						},
+						ObjectMeta: metav1.ObjectMeta{Name: "another-vwa", Namespace: "default"},
 						Status: vwav1.VerticalWorkloadAutoscalerStatus{
 							ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-								Kind: "Deployment",
 								Name: "another-deployment",
+								Kind: "Deployment",
 							},
 						},
 					},
 				},
 			},
-			expectedVWA: nil,
-			expectError: false,
-		},
-		{
-			name: "Error listing VWAs",
-			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-hpa",
-					Namespace: "default",
-				},
-				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-						Kind: "Deployment",
-						Name: "test-deployment",
-					},
-				},
-			},
-			vwaList:     vwav1.VerticalWorkloadAutoscalerList{},
-			expectedVWA: nil,
-			expectError: true,
+			expectedReqs: []reconcile.Request{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scheme := runtime.NewScheme()
-			vwav1.AddToScheme(scheme)
-			autoscalingv2.AddToScheme(scheme)
-
-			client := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithStatusSubresource(&vwav1.VerticalWorkloadAutoscaler{}).
-				WithObjects(tt.hpa).
-				Build()
-
-			if tt.expectError {
-				client = &fakeClientWithError{client}
-			}
-
-			for _, vwa := range tt.vwaList.Items {
-				client.Create(context.Background(), &vwa)
-			}
-
+			client := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(tt.vwaList).Build()
 			r := &VerticalWorkloadAutoscalerReconciler{
 				Client: client,
-				Scheme: scheme,
 			}
 
-			vwa, err := r.findMatchingVWA(context.Background(), tt.hpa)
-			if tt.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-			assert.Equal(t, tt.expectedVWA, vwa)
-		})
-	}
-}
-
-func TestShouldHandleHPA(t *testing.T) {
-	tests := []struct {
-		name     string
-		hpa      *autoscalingv2.HorizontalPodAutoscaler
-		expected bool
-	}{
-		{
-			name: "HPA with CPU metric",
-			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					Metrics: []autoscalingv2.MetricSpec{
-						{
-							Type: autoscalingv2.ResourceMetricSourceType,
-							Resource: &autoscalingv2.ResourceMetricSource{
-								Name: "cpu",
-							},
-						},
-					},
-				},
-			},
-			expected: true,
-		},
-		{
-			name: "HPA with Memory metric",
-			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					Metrics: []autoscalingv2.MetricSpec{
-						{
-							Type: autoscalingv2.ResourceMetricSourceType,
-							Resource: &autoscalingv2.ResourceMetricSource{
-								Name: "memory",
-							},
-						},
-					},
-				},
-			},
-			expected: true,
-		},
-		{
-			name: "HPA with no CPU or Memory metric",
-			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					Metrics: []autoscalingv2.MetricSpec{
-						{
-							Type: autoscalingv2.PodsMetricSourceType,
-						},
-					},
-				},
-			},
-			expected: false,
-		},
-		{
-			name: "HPA with empty metrics",
-			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					Metrics: []autoscalingv2.MetricSpec{},
-				},
-			},
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := shouldHandleHPA(tt.hpa)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestHandleHPAUpdate(t *testing.T) {
-	tests := []struct {
-		name                 string
-		hpa                  *autoscalingv2.HorizontalPodAutoscaler
-		vwaList              vwav1.VerticalWorkloadAutoscalerList
-		expectedIgnoreCPU    bool
-		expectedIgnoreMemory bool
-		expectUpdate         bool
-	}{
-		{
-			name: "HPA with CPU metric",
-			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-hpa",
-					Namespace: "default",
-				},
-				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-						Kind: "Deployment",
-						Name: "test-deployment",
-					},
-					Metrics: []autoscalingv2.MetricSpec{
-						{
-							Type: autoscalingv2.ResourceMetricSourceType,
-							Resource: &autoscalingv2.ResourceMetricSource{
-								Name: "cpu",
-							},
-						},
-					},
-				},
-			},
-			vwaList: vwav1.VerticalWorkloadAutoscalerList{
-				Items: []vwav1.VerticalWorkloadAutoscaler{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "test-vwa",
-							Namespace: "default",
-						},
-						Status: vwav1.VerticalWorkloadAutoscalerStatus{
-							ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-								Kind: "Deployment",
-								Name: "test-deployment",
-							},
-						},
-						Spec: vwav1.VerticalWorkloadAutoscalerSpec{
-							IgnoreCPURecommendations:    false,
-							IgnoreMemoryRecommendations: false,
-						},
-					},
-				},
-			},
-			expectedIgnoreCPU:    true,
-			expectedIgnoreMemory: false,
-			expectUpdate:         true,
-		},
-		{
-			name: "HPA with Memory metric",
-			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-hpa",
-					Namespace: "default",
-				},
-				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-						Kind: "Deployment",
-						Name: "test-deployment",
-					},
-					Metrics: []autoscalingv2.MetricSpec{
-						{
-							Type: autoscalingv2.ResourceMetricSourceType,
-							Resource: &autoscalingv2.ResourceMetricSource{
-								Name: "memory",
-							},
-						},
-					},
-				},
-			},
-			vwaList: vwav1.VerticalWorkloadAutoscalerList{
-				Items: []vwav1.VerticalWorkloadAutoscaler{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "test-vwa",
-							Namespace: "default",
-						},
-						Status: vwav1.VerticalWorkloadAutoscalerStatus{
-							ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-								Kind: "Deployment",
-								Name: "test-deployment",
-							},
-						},
-						Spec: vwav1.VerticalWorkloadAutoscalerSpec{
-							IgnoreCPURecommendations:    false,
-							IgnoreMemoryRecommendations: false,
-						},
-					},
-				},
-			},
-			expectedIgnoreCPU:    false,
-			expectedIgnoreMemory: true,
-			expectUpdate:         true,
-		},
-		{
-			name: "HPA with no CPU or Memory metric",
-			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-hpa",
-					Namespace: "default",
-				},
-				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-						Kind: "Deployment",
-						Name: "test-deployment",
-					},
-					Metrics: []autoscalingv2.MetricSpec{
-						{
-							Type: autoscalingv2.PodsMetricSourceType,
-						},
-					},
-				},
-			},
-			vwaList: vwav1.VerticalWorkloadAutoscalerList{
-				Items: []vwav1.VerticalWorkloadAutoscaler{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "test-vwa",
-							Namespace: "default",
-						},
-						Status: vwav1.VerticalWorkloadAutoscalerStatus{
-							ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-								Kind: "Deployment",
-								Name: "test-deployment",
-							},
-						},
-						Spec: vwav1.VerticalWorkloadAutoscalerSpec{
-							IgnoreCPURecommendations:    false,
-							IgnoreMemoryRecommendations: false,
-						},
-					},
-				},
-			},
-			expectedIgnoreCPU:    false,
-			expectedIgnoreMemory: false,
-			expectUpdate:         false,
-		},
-		{
-			name: "HPA with DeletionTimestamp",
-			hpa: &autoscalingv2.HorizontalPodAutoscaler{
-				ObjectMeta: metav1.ObjectMeta{
-					DeletionTimestamp: &metav1.Time{Time: timeNow()},
-					Name:              "test-hpa",
-					Namespace:         "default",
-					Finalizers:        []string{"test-finalizer"},
-				},
-				Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-					ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-						Kind: "Deployment",
-						Name: "test-deployment",
-					},
-					Metrics: []autoscalingv2.MetricSpec{
-						{
-							Type: autoscalingv2.ResourceMetricSourceType,
-							Resource: &autoscalingv2.ResourceMetricSource{
-								Name: "cpu",
-							},
-						},
-					},
-				},
-			},
-			vwaList: vwav1.VerticalWorkloadAutoscalerList{
-				Items: []vwav1.VerticalWorkloadAutoscaler{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "test-vwa",
-							Namespace: "default",
-						},
-						Status: vwav1.VerticalWorkloadAutoscalerStatus{
-							ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-								Kind: "Deployment",
-								Name: "test-deployment",
-							},
-						},
-						Spec: vwav1.VerticalWorkloadAutoscalerSpec{
-							IgnoreCPURecommendations:    true,
-							IgnoreMemoryRecommendations: false,
-						},
-					},
-				},
-			},
-			expectedIgnoreCPU:    false,
-			expectedIgnoreMemory: false,
-			expectUpdate:         true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			scheme := runtime.NewScheme()
-			vwav1.AddToScheme(scheme)
-			autoscalingv2.AddToScheme(scheme)
-
-			client := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithStatusSubresource(&vwav1.VerticalWorkloadAutoscaler{}).
-				WithObjects(tt.hpa).
-				Build()
-
-			for _, vwa := range tt.vwaList.Items {
-				client.Create(context.Background(), &vwa)
-			}
-
-			r := &VerticalWorkloadAutoscalerReconciler{
-				Client: client,
-				Scheme: scheme,
-			}
-
-			// Create the HPA object without DeletionTimestamp if set; fakeClient does not support DeletionTimestamp
-			client.Create(context.Background(), &autoscalingv2.HorizontalPodAutoscaler{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       tt.hpa.Name,
-					Namespace:  tt.hpa.Namespace,
-					Finalizers: tt.hpa.Finalizers,
-				},
-				Spec: tt.hpa.Spec,
-			})
-
-			_, err := r.handleHPAUpdate(context.TODO(), tt.hpa)
-			assert.NoError(t, err)
-
-			var updatedVWA vwav1.VerticalWorkloadAutoscaler
-			err = client.Get(context.TODO(), _client.ObjectKey{
-				Namespace: tt.hpa.Namespace,
-				Name:      tt.vwaList.Items[0].Name,
-			}, &updatedVWA)
-			assert.NoError(t, err)
-
-			assert.Equal(t, tt.expectedIgnoreCPU, updatedVWA.Spec.IgnoreCPURecommendations)
-			assert.Equal(t, tt.expectedIgnoreMemory, updatedVWA.Spec.IgnoreMemoryRecommendations)
-			if tt.expectUpdate {
-				if tt.expectedIgnoreCPU != tt.vwaList.Items[0].Spec.IgnoreCPURecommendations {
-					assert.NotEqual(t, tt.vwaList.Items[0].Spec.IgnoreCPURecommendations, updatedVWA.Spec.IgnoreCPURecommendations)
-				}
-				if tt.expectedIgnoreMemory != tt.vwaList.Items[0].Spec.IgnoreMemoryRecommendations {
-					assert.NotEqual(t, tt.vwaList.Items[0].Spec.IgnoreMemoryRecommendations, updatedVWA.Spec.IgnoreMemoryRecommendations)
-				}
-			} else {
-				assert.Equal(t, tt.vwaList.Items[0].Spec.IgnoreCPURecommendations, updatedVWA.Spec.IgnoreCPURecommendations)
-				assert.Equal(t, tt.vwaList.Items[0].Spec.IgnoreMemoryRecommendations, updatedVWA.Spec.IgnoreMemoryRecommendations)
-			}
+			reqs := r.findVWAForHPA(context.TODO(), tt.hpa)
+			assert.Equal(t, tt.expectedReqs, reqs)
 		})
 	}
 }

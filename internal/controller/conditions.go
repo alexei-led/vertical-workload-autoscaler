@@ -33,6 +33,8 @@ const (
 	ReasonTargetObjectFound = "TargetObjectFound"
 	// ReasonUpdatedResources reason updated resources recommendation
 	ReasonUpdatedResources = "UpdatedResources"
+	// ReasonWaitingForRecommendations reason waiting for recommendations
+	ReasonWaitingForRecommendations = "WaitingForRecommendations"
 )
 
 // updateStatusCondition updates the VWA status with a new condition

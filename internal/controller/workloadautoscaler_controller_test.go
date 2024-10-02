@@ -19,81 +19,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	_client "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
-
-func TestFindObjectsForVPA(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = vwav1.AddToScheme(scheme)
-	_ = vpav1.AddToScheme(scheme)
-
-	tests := []struct {
-		name     string
-		vpaName  string
-		vwaList  []vwav1.VerticalWorkloadAutoscaler
-		expected []reconcile.Request
-	}{
-		{
-			name:    "VPA referenced by one VWA",
-			vpaName: "vpa1",
-			vwaList: []vwav1.VerticalWorkloadAutoscaler{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vwa1", Namespace: "default"},
-					Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
-				},
-			},
-			expected: []reconcile.Request{
-				{NamespacedName: types.NamespacedName{Name: "vwa1", Namespace: "default"}},
-			},
-		},
-		{
-			name:    "VPA not referenced by any VWA",
-			vpaName: "vpa2",
-			vwaList: []vwav1.VerticalWorkloadAutoscaler{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vwa1", Namespace: "default"},
-					Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
-				},
-			},
-			expected: []reconcile.Request{},
-		},
-		{
-			name:    "Multiple VWAs referencing the same VPA",
-			vpaName: "vpa1",
-			vwaList: []vwav1.VerticalWorkloadAutoscaler{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vwa1", Namespace: "default"},
-					Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vwa2", Namespace: "default"},
-					Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
-				},
-			},
-			expected: []reconcile.Request{
-				{NamespacedName: types.NamespacedName{Name: "vwa1", Namespace: "default"}},
-				{NamespacedName: types.NamespacedName{Name: "vwa2", Namespace: "default"}},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			vpa := &vpav1.VerticalPodAutoscaler{
-				ObjectMeta: metav1.ObjectMeta{Name: tt.vpaName, Namespace: "default"},
-			}
-			objs := []_client.Object{vpa}
-			for _, vwa := range tt.vwaList {
-				objs = append(objs, &vwa)
-			}
-			client := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&vwav1.VerticalWorkloadAutoscaler{}).WithObjects(objs...).Build()
-			r := &VerticalWorkloadAutoscalerReconciler{Client: client}
-
-			requests := r.findObjectsForVPA(context.Background(), vpa)
-			assert.Equal(t, tt.expected, requests)
-		})
-	}
-}
 
 func TestEnsureNoDuplicateVWA(t *testing.T) {
 	scheme := runtime.NewScheme()
@@ -168,6 +94,75 @@ func TestHandleVWAChange(t *testing.T) {
 		updatedRequirements map[string]corev1.ResourceRequirements
 		expected            error
 	}{
+		{
+			name: "No duplicate VWA",
+			vwa: vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "vwa1", Namespace: "default"},
+				Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
+			},
+			vwa2: &vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "vwa2", Namespace: "default"},
+				Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa2"}},
+			},
+			expected: nil,
+		},
+		{
+			name: "Duplicate VWA exists",
+			vwa: vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "vwa1", Namespace: "default"},
+				Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
+			},
+			vwa2: &vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "vwa2", Namespace: "default"},
+				Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
+			},
+			expected: fmt.Errorf("VPA 'vpa1' is already referenced by another VWA object 'vwa2'"),
+		},
+		{
+			name: "VPA not found",
+			vwa: vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "vwa1", Namespace: "default"},
+				Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
+			},
+			expected: nil,
+		},
+		{
+			name: "VPA has no recommendations",
+			vwa: vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "vwa1", Namespace: "default"},
+				Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
+			},
+			vpa: &vpav1.VerticalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "vpa1", Namespace: "default"},
+				Spec: vpav1.VerticalPodAutoscalerSpec{
+					TargetRef: &autoscalingv1.CrossVersionObjectReference{
+						Kind: "Deployment",
+						Name: "deployment1",
+					},
+				},
+			},
+			expected: nil,
+		},
+		{
+			name: "Target object not found",
+			vwa: vwav1.VerticalWorkloadAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "vwa1", Namespace: "default"},
+				Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
+			},
+			vpa: &vpav1.VerticalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: "vpa1", Namespace: "default"},
+				Spec: vpav1.VerticalPodAutoscalerSpec{
+					TargetRef: &autoscalingv1.CrossVersionObjectReference{
+						Kind: "Deployment",
+						Name: "deployment1",
+					},
+				},
+				Status: vpav1.VerticalPodAutoscalerStatus{
+					Recommendation: &vpav1.RecommendedPodResources{},
+				},
+			},
+			expected: nil,
+		},
 		{
 			name: "Update Deployment (Guaranteed) according to VPA recommendations",
 			vwa: vwav1.VerticalWorkloadAutoscaler{

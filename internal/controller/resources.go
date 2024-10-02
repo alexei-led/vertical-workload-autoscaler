@@ -194,7 +194,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) fetchCurrentResources(targetObjec
 	return currentResources, nil
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) updateTargetObject(ctx context.Context, targetObject client.Object, vwa *vwav1.VerticalWorkloadAutoscaler, newResources map[string]corev1.ResourceRequirements) error {
+func (r *VerticalWorkloadAutoscalerReconciler) updateTargetObject(ctx context.Context, targetObject client.Object, vwa *vwav1.VerticalWorkloadAutoscaler, newResources map[string]corev1.ResourceRequirements) (bool, error) {
 	needsUpdate := false
 
 	updateContainers := func(containers []corev1.Container) {
@@ -227,16 +227,16 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateTargetObject(ctx context.Co
 	case *appsv1.DaemonSet:
 		updateContainers(resource.Spec.Template.Spec.Containers)
 	default:
-		return errors.NewBadRequest(fmt.Sprintf("unsupported target object type: %T", targetObject))
+		return false, errors.NewBadRequest(fmt.Sprintf("unsupported target object type: %T", targetObject))
 	}
 
 	if needsUpdate {
 		r.setAnnotations(targetObject, vwa)
 		if err := r.Update(ctx, targetObject); err != nil {
-			return errors.NewInternalError(fmt.Errorf("failed to update target object: %w", err))
+			return false, errors.NewInternalError(fmt.Errorf("failed to update target object: %w", err))
 		}
 	}
-	return nil
+	return needsUpdate, nil
 }
 
 func (r *VerticalWorkloadAutoscalerReconciler) setAnnotations(targetObject client.Object, vwa *vwav1.VerticalWorkloadAutoscaler) {

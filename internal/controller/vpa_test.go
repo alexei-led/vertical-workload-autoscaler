@@ -6,17 +6,16 @@ import (
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
-	appsv1 "k8s.io/api/apps/v1"
-	autoscalingv1 "k8s.io/api/autoscaling/v1"
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
+	_client "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 func TestVPARecommendationChangedPredicate_Update(t *testing.T) {
@@ -96,115 +95,75 @@ func TestFetchVPA(t *testing.T) {
 	assert.Equal(t, vpa, fetchedVPA, "Expected fetched VPA to match the created VPA")
 }
 
-func TestHandleVPAUpdate(t *testing.T) {
-	ctx := context.TODO()
-	s := runtime.NewScheme()
-	s.AddKnownTypes(vpav1.SchemeGroupVersion, &vpav1.VerticalPodAutoscaler{})
-	s.AddKnownTypes(vwav1.GroupVersion, &vwav1.VerticalWorkloadAutoscaler{})
-	s.AddKnownTypes(vwav1.GroupVersion, &vwav1.VerticalWorkloadAutoscalerList{})
-	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.Deployment{})
-
-	vpa := &vpav1.VerticalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-vpa",
-			Namespace: "default",
-		},
-		Spec: vpav1.VerticalPodAutoscalerSpec{
-			TargetRef: &autoscalingv1.CrossVersionObjectReference{
-				Kind: "Deployment",
-				Name: "test-deployment",
-			},
-		},
-	}
-
-	deployment := &appsv1.Deployment{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "apps/v1",
-			Kind:       "Deployment",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-deployment",
-			Namespace: "default",
-		},
-		Spec: appsv1.DeploymentSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "test-container",
-							Image: "test-image",
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									"cpu":    resource.MustParse("100m"),
-									"memory": resource.MustParse("200Mi"),
-								},
-								Limits: corev1.ResourceList{
-									"cpu":    resource.MustParse("200m"),
-									"memory": resource.MustParse("400Mi"),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	wa := &vwav1.VerticalWorkloadAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-wa",
-			Namespace: "default",
-		},
-		Spec: vwav1.VerticalWorkloadAutoscalerSpec{
-			VPAReference: vwav1.VPAReference{
-				Name: "test-vpa",
-			},
-		},
-		Status: vwav1.VerticalWorkloadAutoscalerStatus{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-				Kind: "Deployment",
-				Name: "test-deployment",
-			},
-		},
-	}
-
-	client := fake.NewClientBuilder().WithScheme(s).WithObjects(vpa, wa, deployment).Build()
-	r := &VerticalWorkloadAutoscalerReconciler{
-		Client: client,
-		Scheme: s,
-	}
+func TestFindObjectsForVPA(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = vwav1.AddToScheme(scheme)
+	_ = vpav1.AddToScheme(scheme)
 
 	tests := []struct {
-		name          string
-		vpa           *vpav1.VerticalPodAutoscaler
-		expectedError bool
+		name     string
+		vpaName  string
+		vwaList  []vwav1.VerticalWorkloadAutoscaler
+		expected []reconcile.Request
 	}{
 		{
-			name:          "VPA with associated VWA",
-			vpa:           vpa,
-			expectedError: false,
-		},
-		{
-			name: "VPA with no associated VWA",
-			vpa: &vpav1.VerticalPodAutoscaler{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "non-existent-vpa",
-					Namespace: "default",
+			name:    "VPA referenced by one VWA",
+			vpaName: "vpa1",
+			vwaList: []vwav1.VerticalWorkloadAutoscaler{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vwa1", Namespace: "default"},
+					Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
 				},
 			},
-			expectedError: false,
+			expected: []reconcile.Request{
+				{NamespacedName: types.NamespacedName{Name: "vwa1", Namespace: "default"}},
+			},
+		},
+		{
+			name:    "VPA not referenced by any VWA",
+			vpaName: "vpa2",
+			vwaList: []vwav1.VerticalWorkloadAutoscaler{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vwa1", Namespace: "default"},
+					Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
+				},
+			},
+			expected: []reconcile.Request{},
+		},
+		{
+			name:    "Multiple VWAs referencing the same VPA",
+			vpaName: "vpa1",
+			vwaList: []vwav1.VerticalWorkloadAutoscaler{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vwa1", Namespace: "default"},
+					Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vwa2", Namespace: "default"},
+					Spec:       vwav1.VerticalWorkloadAutoscalerSpec{VPAReference: vwav1.VPAReference{Name: "vpa1"}},
+				},
+			},
+			expected: []reconcile.Request{
+				{NamespacedName: types.NamespacedName{Name: "vwa1", Namespace: "default"}},
+				{NamespacedName: types.NamespacedName{Name: "vwa2", Namespace: "default"}},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := r.handleVPAUpdate(ctx, tt.vpa)
-			if tt.expectedError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
+			vpa := &vpav1.VerticalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{Name: tt.vpaName, Namespace: "default"},
 			}
-			assert.Equal(t, ctrl.Result{}, result)
+			objs := []_client.Object{vpa}
+			for _, vwa := range tt.vwaList {
+				objs = append(objs, &vwa)
+			}
+			client := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&vwav1.VerticalWorkloadAutoscaler{}).WithObjects(objs...).Build()
+			r := &VerticalWorkloadAutoscalerReconciler{Client: client}
+
+			requests := r.findVWAForVPA(context.Background(), vpa)
+			assert.Equal(t, tt.expected, requests)
 		})
 	}
 }

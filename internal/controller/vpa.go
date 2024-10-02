@@ -6,11 +6,11 @@ import (
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // VPARecommendationChangedPredicate is a custom predicate to watch for changes in VPA recommendations
@@ -35,30 +35,28 @@ func (r *VerticalWorkloadAutoscalerReconciler) fetchVPA(ctx context.Context, wa 
 	return &vpa, nil
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) handleVPAUpdate(ctx context.Context, vpa *vpav1.VerticalPodAutoscaler) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	// Fetch the associated VWA object
-	var waList vwav1.VerticalWorkloadAutoscalerList
-	if err := r.List(ctx, &waList, client.InNamespace(vpa.Namespace)); err != nil {
-		logger.Error(err, "failed to list VerticalWorkloadAutoscaler objects", "VPA", vpa.Name)
-		return ctrl.Result{}, err // Return error to retry reconciliation
+func (r *VerticalWorkloadAutoscalerReconciler) findVWAForVPA(_ context.Context, vpa client.Object) []reconcile.Request {
+	requests := make([]reconcile.Request, 0)
+	vpaObj, ok := vpa.(*vpav1.VerticalPodAutoscaler)
+	if !ok {
+		return requests
 	}
 
-	for _, wa := range waList.Items {
-		if wa.Spec.VPAReference.Name == vpa.Name {
-			logger.Info("requeueing VWA due to VPA update", "VWA", wa.Name, "VPA", vpa.Name)
-			// Record an event that the VPA update triggered a requeue of the VWA
-			r.recordEvent(&wa, "Normal", "VPAUpdated", "requeueing VWA due to VPA recommendation change")
-			// Requeue the VWA for reconciliation
-			return r.Reconcile(ctx, ctrl.Request{
+	var vwaList vwav1.VerticalWorkloadAutoscalerList
+	if err := r.List(context.Background(), &vwaList); err != nil {
+		log.Log.Error(err, "failed to list VerticalWorkloadAutoscaler objects")
+		return requests
+	}
+
+	for _, vwa := range vwaList.Items {
+		if vwa.Spec.VPAReference.Name == vpaObj.Name {
+			requests = append(requests, reconcile.Request{
 				NamespacedName: client.ObjectKey{
-					Name:      wa.Name,
-					Namespace: wa.Namespace,
+					Namespace: vwa.Namespace,
+					Name:      vwa.Name,
 				},
 			})
 		}
 	}
-	logger.Info("no associated VerticalWorkloadAutoscaler found for VPA", "VPA", vpa.Name)
-	return ctrl.Result{}, nil
+	return requests
 }

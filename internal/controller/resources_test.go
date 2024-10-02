@@ -53,6 +53,7 @@ func TestUpdateTargetObject(t *testing.T) {
 		name           string
 		targetResource _client.Object
 		newResources   map[string]corev1.ResourceRequirements
+		updated        bool
 		expectedError  bool
 	}{
 		{
@@ -85,6 +86,7 @@ func TestUpdateTargetObject(t *testing.T) {
 					},
 				},
 			},
+			updated:       true,
 			expectedError: false,
 		},
 		{
@@ -124,7 +126,8 @@ func TestUpdateTargetObject(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create target resource: %v", err)
 			}
-			err = r.updateTargetObject(context.TODO(), tt.targetResource, vwa, tt.newResources)
+			got, err := r.updateTargetObject(context.TODO(), tt.targetResource, vwa, tt.newResources)
+			assert.Equal(t, tt.updated, got)
 			if tt.expectedError {
 				assert.Error(t, err)
 			} else {

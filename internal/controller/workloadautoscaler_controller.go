@@ -34,7 +34,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // VerticalWorkloadAutoscalerReconciler reconciles a VerticalWorkloadAutoscaler object
@@ -60,41 +59,19 @@ type VerticalWorkloadAutoscalerReconciler struct {
 func (r *VerticalWorkloadAutoscalerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Try to get the VerticalWorkloadAutoscaler instance
+	// Fetch the VWA object
 	vwa, err := r.getVWA(ctx, req.NamespacedName)
 	if err != nil {
 		logger.Error(err, "failed to get VerticalWorkloadAutoscaler", "namespacedName", req.NamespacedName)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	if vwa == nil {
+		logger.Info("VerticalWorkloadAutoscaler not found, skipping", "namespacedName", req.NamespacedName)
 		return ctrl.Result{}, nil
 	}
-	if vwa != nil {
-		// Handle the VWA object
-		return r.handleVWAChange(ctx, vwa)
-	}
 
-	// Try to get the VerticalPodAutoscaler instance
-	vpa, err := r.getVPA(ctx, req.NamespacedName)
-	if err != nil {
-		logger.Error(err, "failed to get VerticalPodAutoscaler", "namespacedName", req.NamespacedName)
-		return ctrl.Result{}, nil
-	}
-	if vpa != nil {
-		// Handle the VPA object
-		return r.handleVPAUpdate(ctx, vpa)
-	}
-
-	// Try to get the HorizontalPodAutoscaler instance
-	hpa, err := r.getHPA(ctx, req.NamespacedName)
-	if err != nil {
-		logger.Error(err, "failed to get HorizontalPodAutoscaler", "namespacedName", req.NamespacedName)
-		return ctrl.Result{}, nil
-	}
-	if hpa != nil {
-		// Handle the HPA object
-		return r.handleHPAUpdate(ctx, hpa)
-	}
-
-	logger.Info("unrecognized object type, ignoring", "Object", req.NamespacedName)
-	return ctrl.Result{}, nil
+	// Handle the VWA reconciliation
+	return r.handleVWAChange(ctx, vwa)
 }
 
 func (r *VerticalWorkloadAutoscalerReconciler) getVWA(ctx context.Context, namespacedName client.ObjectKey) (*vwav1.VerticalWorkloadAutoscaler, error) {
@@ -109,30 +86,6 @@ func (r *VerticalWorkloadAutoscalerReconciler) getVWA(ctx context.Context, names
 	return &vwa, nil
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) getVPA(ctx context.Context, namespacedName client.ObjectKey) (*vpav1.VerticalPodAutoscaler, error) {
-	var vpa vpav1.VerticalPodAutoscaler
-	err := r.Get(ctx, namespacedName, &vpa)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &vpa, nil
-}
-
-func (r *VerticalWorkloadAutoscalerReconciler) getHPA(ctx context.Context, namespacedName client.ObjectKey) (*autoscalingv2.HorizontalPodAutoscaler, error) {
-	var hpa autoscalingv2.HorizontalPodAutoscaler
-	err := r.Get(ctx, namespacedName, &hpa)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &hpa, nil
-}
-
 // SetupWithManager sets up the controller with the Manager.
 func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Recorder = mgr.GetEventRecorderFor("vwa-controller-manager")
@@ -141,46 +94,23 @@ func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Watches(
 			&vpav1.VerticalPodAutoscaler{},
-			handler.EnqueueRequestsFromMapFunc(r.findObjectsForVPA),
+			handler.EnqueueRequestsFromMapFunc(r.findVWAForVPA),
 			builder.WithPredicates(predicate.Funcs{
 				CreateFunc:  func(e event.CreateEvent) bool { return false },  // Ignore create
 				DeleteFunc:  func(e event.DeleteEvent) bool { return false },  // Ignore delete
 				UpdateFunc:  func(e event.UpdateEvent) bool { return true },   // Trigger only on update
 				GenericFunc: func(e event.GenericEvent) bool { return false }, // Ignore generic
 			})).
+		// Map HPA updates to VWA reconciliation
 		Watches(
 			&autoscalingv2.HorizontalPodAutoscaler{},
-			&handler.EnqueueRequestForObject{},
+			handler.EnqueueRequestsFromMapFunc(r.findVWAForHPA),
 		).
 		Complete(r); err != nil {
 		log.Log.Error(err, "failed to setup controller with manager")
 		return err
 	}
 	return nil
-}
-
-func (r *VerticalWorkloadAutoscalerReconciler) findObjectsForVPA(_ context.Context, obj client.Object) []reconcile.Request {
-	requests := make([]reconcile.Request, 0)
-	var vwaList vwav1.VerticalWorkloadAutoscalerList
-	if err := r.List(context.Background(), &vwaList); err != nil {
-		log.Log.Error(err, "failed to list VerticalWorkloadAutoscaler objects")
-		return requests
-	}
-	vpa, ok := obj.(*vpav1.VerticalPodAutoscaler)
-	if !ok {
-		return requests
-	}
-	for _, vwa := range vwaList.Items {
-		if vwa.Spec.VPAReference.Name == vpa.Name {
-			requests = append(requests, reconcile.Request{
-				NamespacedName: client.ObjectKey{
-					Namespace: vwa.Namespace,
-					Name:      vwa.Name,
-				},
-			})
-		}
-	}
-	return requests
 }
 
 // checks if there is any other VWA referencing the same VPA
@@ -279,11 +209,35 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 		return ctrl.Result{}, err                                                                                                       // Retry on error
 	}
 
-	// Calculate new resource values based on StepSize configuration
+	// find the HPA associated with the target object
+	var ignoreCPU, ignoreMemory bool
+	hpa, err := r.findHPAForVWA(ctx, wa)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("there is no HPA referencing the same target object")
+		} else {
+			logger.Error(err, "unexpected error while finding HPA")
+			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to find HPA") //nolint:errcheck
+			return ctrl.Result{}, err                                                                                        // Retry on error
+		}
+	}
+	// Check if the HPA has CPU or Memory metrics
+	if hpa != nil {
+		ignoreCPU, ignoreMemory = r.getIgnoreFlags(hpa)
+	}
+	// requeue if ignore flags were updated
+	if wa.Spec.IgnoreCPURecommendations != ignoreCPU || wa.Spec.IgnoreMemoryRecommendations != ignoreMemory {
+		logger.Info("ignore flags updated", "ignoreCPU", ignoreCPU, "ignoreMemory", ignoreMemory)
+		r.recordEvent(wa, "Normal", "IgnoreFlagsUpdated", "ignore flags updated")
+		r.updateStatusCondition(ctx, wa, ConditionTypeReconciled, metav1.ConditionTrue, ReasonUpdatedResources, "updated ignore flags") //nolint:errcheck
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// Calculate new resource values based on VPA recommendations and VWA configuration
 	newResources := r.calculateNewResources(*wa, currentResources, vpa.Status.Recommendation)
 
 	// Update the target resource
-	err = r.updateTargetObject(ctx, targetObject, wa, newResources)
+	updated, err := r.updateTargetObject(ctx, targetObject, wa, newResources)
 	if err != nil {
 		logger.Error(err, "failed to update target resource")
 		r.recordEvent(wa, "Error", "UpdateFailed", "failed to update target resource")
@@ -291,15 +245,21 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 		return ctrl.Result{}, err                                                                                                      // Retry on error
 	}
 
-	// Update VerticalWorkloadAutoscaler status
-	if err = r.updateStatus(ctx, wa, newResources); err != nil {
-		logger.Error(err, "failed to update VerticalWorkloadAutoscaler status")
-		return ctrl.Result{}, err // Retry on error
-	}
+	if updated {
+		// Update VerticalWorkloadAutoscaler status
+		if err = r.updateStatus(ctx, wa, newResources); err != nil {
+			logger.Error(err, "failed to update VerticalWorkloadAutoscaler status")
+			return ctrl.Result{}, err // Retry on error
+		}
 
-	r.recordEvent(wa, "Normal", "ResourcesUpdated", "resources updated")
-	r.updateStatusCondition(ctx, wa, ConditionTypeReconciled, metav1.ConditionTrue, ReasonUpdatedResources, "updated resources") //nolint:errcheck
-	// Record that the VWA was reconciled
-	logger.Info("successfully reconciled VerticalWorkloadAutoscaler")
+		r.recordEvent(wa, "Normal", "ResourcesUpdated", "resources updated")
+		r.updateStatusCondition(ctx, wa, ConditionTypeReconciled, metav1.ConditionTrue, ReasonUpdatedResources, "updated resources") //nolint:errcheck
+		// Record that the VWA was reconciled
+		logger.Info("successfully reconciled VerticalWorkloadAutoscaler")
+	} else {
+		logger.Info("waiting for VPA recommendations")
+		r.recordEvent(wa, "Normal", "WaitingForRecommendations", "waiting for VPA recommendations")
+		r.updateStatusCondition(ctx, wa, ConditionTypeReconciled, metav1.ConditionFalse, ReasonWaitingForRecommendations, "waiting for VPA recommendations") //nolint:errcheck
+	}
 	return ctrl.Result{}, nil
 }
