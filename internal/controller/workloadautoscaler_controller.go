@@ -49,8 +49,8 @@ type VerticalWorkloadAutoscalerReconciler struct {
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalpodautoscalers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalpodautoscalers/status,verbs=get;list;watch
-// +kubebuilder:rbac:groups=apps,resources=deployments;replicasets;statefulsets;daemonsets,verbs=get;list;watch
-// +kubebuilder:rbac:groups=batch,resources=jobs;cronjobs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=deployments;replicasets;statefulsets;daemonsets,verbs=get;list;watch;update
+// +kubebuilder:rbac:groups=batch,resources=jobs;cronjobs,verbs=get;list;watch;update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
