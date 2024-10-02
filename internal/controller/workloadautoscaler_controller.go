@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,12 +40,14 @@ import (
 // VerticalWorkloadAutoscalerReconciler reconciles a VerticalWorkloadAutoscaler object
 type VerticalWorkloadAutoscalerReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=autoscaling.workload.io,resources=verticalworkloadautoscalers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=autoscaling.workload.io,resources=verticalworkloadautoscalers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=autoscaling.workload.io,resources=verticalworkloadautoscalers/status,verbs=get;list;watch;update
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups=autoscaling.k8s.io,resources=verticalpodautoscalers,verbs=get;list;watch
@@ -132,6 +135,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) getHPA(ctx context.Context, names
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.Recorder = mgr.GetEventRecorderFor("vwa-controller-manager")
 	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&vwav1.VerticalWorkloadAutoscaler{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
@@ -209,6 +213,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	// Check if an update is allowed now or should be delayed
 	if delay, shouldDelay := r.shouldDelayUpdate(*wa); shouldDelay {
 		logger.Info("delaying update", "RequeueAfter", delay)
+		r.recordEvent(wa, "Normal", "UpdateDelayed", fmt.Sprintf("update delayed for %s", delay))
 		return ctrl.Result{RequeueAfter: delay}, nil
 	}
 
@@ -217,6 +222,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("VPA not found: ignoring since object must be deleted")
+			r.recordEvent(wa, "Normal", "VPAReferenceNotFound", "VPA not found")                                                    // nolint:errcheck
 			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonVPAReferenceNotFound, "VPA not found") // nolint:errcheck
 			return ctrl.Result{}, nil
 		}
@@ -224,6 +230,11 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch VPA") // nolint:errcheck
 		return ctrl.Result{}, err                                                                                         // Retry on error
 	}
+
+	// Update the VWA status with the VPA reference
+	r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionTrue, ReasonVPAFound, "VPA found") // nolint:errcheck
+	// Record that VPA was found
+	r.recordEvent(wa, "Normal", "VPAFound", fmt.Sprintf("VPA '%s' found", vpa.Name))
 
 	// if VPA has no recommendations, nothing to do
 	if vpa.Status.Recommendation == nil {
@@ -256,6 +267,8 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 			logger.Error(err, "failed to update VWA status with new ScaleTargetRef")
 			return ctrl.Result{}, err // Retry on error
 		}
+		r.recordEvent(wa, "Normal", "ScaleTargetRefUpdated", fmt.Sprintf("ScaleTargetRef updated to '%s'", vpa.Spec.TargetRef.Name))
+		r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionTrue, ReasonTargetObjectFound, "target object found") //nolint:errcheck
 	}
 
 	// fetch current resources of the target object
@@ -273,6 +286,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	err = r.updateTargetObject(ctx, targetObject, wa, newResources)
 	if err != nil {
 		logger.Error(err, "failed to update target resource")
+		r.recordEvent(wa, "Error", "UpdateFailed", "failed to update target resource")
 		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to update target resource") // nolint:errcheck
 		return ctrl.Result{}, err                                                                                                      // Retry on error
 	}
@@ -283,6 +297,9 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 		return ctrl.Result{}, err // Retry on error
 	}
 
+	r.recordEvent(wa, "Normal", "ResourcesUpdated", "resources updated")
+	r.updateStatusCondition(ctx, wa, ConditionTypeReconciled, metav1.ConditionTrue, ReasonUpdatedResources, "updated resources") //nolint:errcheck
+	// Record that the VWA was reconciled
 	logger.Info("successfully reconciled VerticalWorkloadAutoscaler")
 	return ctrl.Result{}, nil
 }

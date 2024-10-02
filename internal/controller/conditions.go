@@ -27,6 +27,12 @@ const (
 	ReasonNoRecommendation = "NoRecommendation"
 	// ReasonAPIError is the condition reason for Kubernetes API error
 	ReasonAPIError = "APIError"
+	// ReasonVPAFound is the condition reason for VPA found
+	ReasonVPAFound = "VPAFound"
+	// ReasonTargetObjectFound is the condition reason for target object found
+	ReasonTargetObjectFound = "TargetObjectFound"
+	// ReasonUpdatedResources reason updated resources recommendation
+	ReasonUpdatedResources = "UpdatedResources"
 )
 
 // updateStatusCondition updates the VWA status with a new condition
@@ -55,6 +61,12 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateStatusCondition(ctx context
 	}
 
 	return r.Status().Update(ctx, wa)
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) recordEvent(wa *vwav1.VerticalWorkloadAutoscaler, eventType, reason, message string) {
+	if r.Recorder != nil {
+		r.Recorder.Event(wa, eventType, reason, message)
+	}
 }
 
 // findCondition helps to find an existing condition in the conditions array
