@@ -41,12 +41,15 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVPAUpdate(ctx context.Conte
 	// Fetch the associated VWA object
 	var waList vwav1.VerticalWorkloadAutoscalerList
 	if err := r.List(ctx, &waList, client.InNamespace(vpa.Namespace)); err != nil {
-		logger.Error(err, "failed to list VerticalWorkloadAutoscaler objects")
-		return ctrl.Result{}, nil
+		logger.Error(err, "failed to list VerticalWorkloadAutoscaler objects", "VPA", vpa.Name)
+		return ctrl.Result{}, err // Return error to retry reconciliation
 	}
 
 	for _, wa := range waList.Items {
 		if wa.Spec.VPAReference.Name == vpa.Name {
+			logger.Info("requeueing VWA due to VPA update", "VWA", wa.Name, "VPA", vpa.Name)
+			// Record an event that the VPA update triggered a requeue of the VWA
+			r.recordEvent(&wa, "Normal", "VPAUpdated", "requeueing VWA due to VPA recommendation change")
 			// Requeue the VWA for reconciliation
 			return r.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
@@ -56,7 +59,6 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVPAUpdate(ctx context.Conte
 			})
 		}
 	}
-
 	logger.Info("no associated VerticalWorkloadAutoscaler found for VPA", "VPA", vpa.Name)
 	return ctrl.Result{}, nil
 }

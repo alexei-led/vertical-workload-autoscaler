@@ -205,7 +205,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 
 	// Ensure no duplicate VWA exists
 	if err := r.ensureNoDuplicateVWA(ctx, wa); err != nil {
-		logger.Error(err, "duplicate VWA found")
+		logger.Error(err, "duplicate VWA found", "VWA", wa.Name)
 		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonVPAReferenceConflict, fmt.Sprintf("VPA '%s' is already referenced by another VWA object", wa.Spec.VPAReference.Name)) // nolint:errcheck
 		return ctrl.Result{}, err                                                                                                                                                                              // Return error to indicate failure and retry                                                                                                                                                                              // Avoid calling reconcile again
 	}
@@ -221,12 +221,12 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	vpa, err := r.fetchVPA(ctx, *wa)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("VPA not found: ignoring since object must be deleted")
+			logger.Info("VPA not found: ignoring since object must be deleted", "VPA", wa.Spec.VPAReference.Name)
 			r.recordEvent(wa, "Normal", "VPAReferenceNotFound", "VPA not found")                                                    // nolint:errcheck
 			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonVPAReferenceNotFound, "VPA not found") // nolint:errcheck
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "failed to fetch VPA")
+		logger.Error(err, "failed to fetch VPA", "VPA", wa.Spec.VPAReference.Name)
 		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch VPA") // nolint:errcheck
 		return ctrl.Result{}, err                                                                                         // Retry on error
 	}
@@ -238,7 +238,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 
 	// if VPA has no recommendations, nothing to do
 	if vpa.Status.Recommendation == nil {
-		logger.Info("VPA has no recommendations")
+		logger.Info("VPA has no recommendations", "VPA", vpa.Name)
 		r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionFalse, ReasonNoRecommendation, "VPA has no recommendations yet") // nolint:errcheck
 		return ctrl.Result{}, nil                                                                                                             // Avoid calling reconcile again
 	}
@@ -247,11 +247,11 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	targetObject, err := r.fetchTargetObject(ctx, vpa)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("target object not found; ignoring since object must be deleted")
+			logger.Info("target object not found; ignoring since object must be deleted", "VPA", vpa.Name)
 			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonTargetObjectNotFound, "target object not found") //nolint:errcheck
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "failed to fetch target object")
+		logger.Error(err, "failed to fetch target object", "VPA", vpa.Name)
 		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch target object") //nolint:errcheck
 		return ctrl.Result{}, err                                                                                                   // Retry on error
 	}

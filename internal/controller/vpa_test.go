@@ -101,6 +101,7 @@ func TestHandleVPAUpdate(t *testing.T) {
 	s := runtime.NewScheme()
 	s.AddKnownTypes(vpav1.SchemeGroupVersion, &vpav1.VerticalPodAutoscaler{})
 	s.AddKnownTypes(vwav1.GroupVersion, &vwav1.VerticalWorkloadAutoscaler{})
+	s.AddKnownTypes(vwav1.GroupVersion, &vwav1.VerticalWorkloadAutoscalerList{})
 	s.AddKnownTypes(appsv1.SchemeGroupVersion, &appsv1.Deployment{})
 
 	vpa := &vpav1.VerticalPodAutoscaler{

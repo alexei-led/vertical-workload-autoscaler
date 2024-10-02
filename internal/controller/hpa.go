@@ -5,6 +5,7 @@ import (
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -14,32 +15,39 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleHPAUpdate(ctx context.Conte
 	logger := log.FromContext(ctx)
 
 	if !shouldHandleHPA(hpa) {
+		logger.Info("skipping HPA as it does not use CPU or memory metrics", "HPA", hpa.Name)
 		return ctrl.Result{}, nil
 	}
 
 	vwa, err := r.findMatchingVWA(ctx, hpa)
 	if err != nil {
-		logger.Error(err, "failed to list VWAs")
+		logger.Error(err, "failed to list VWAs", "HPA", hpa.Name)
 		return ctrl.Result{}, nil
 	}
 	if vwa == nil {
+		logger.Info("no matching VWA found for HPA", "HPA", hpa.Name)
 		return ctrl.Result{}, nil
 	}
 
 	ignoreCPU, ignoreMemory := getIgnoreFlags(hpa)
 	if !hpa.DeletionTimestamp.IsZero() {
+		logger.Info("HPA is being deleted, resetting ignore flags", "HPA", hpa.Name)
 		ignoreCPU = false
 		ignoreMemory = false
 	}
 
 	if updateVWA(vwa, ignoreCPU, ignoreMemory) {
+		logger.Info("updating VWA with HPA conflicts", "VWA", vwa.Name, "HPA", hpa.Name)
 		if err = r.Update(ctx, vwa); err != nil {
-			logger.Error(err, "failed to update VWA with HPA conflicts")
+			logger.Error(err, "Failed to update VWA", "VWA", vwa.Name, "HPA", hpa.Name)
+			r.recordEvent(vwa, "Warning", "UpdateFailed", "Failed to update VWA with HPA conflicts")
 			return ctrl.Result{}, nil
 		}
+		r.recordEvent(vwa, "Normal", "Updated", "Updated VWA with HPA CPU/Memory conflicts")
+		r.updateStatusCondition(ctx, vwa, ConditionTypeReconciled, metav1.ConditionTrue, ReasonUpdatedResources, "updated VWA with HPA CPU/Memory conflicts") //nolint:errcheck
 	}
 
-	logger.Info("successfully handled HPA update")
+	logger.Info("Successfully handled HPA update", "HPA", hpa.Name, "VWA", vwa.Name)
 	return ctrl.Result{}, nil
 }
 
