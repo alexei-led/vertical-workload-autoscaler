@@ -134,6 +134,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) getHPA(ctx context.Context, names
 func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&vwav1.VerticalWorkloadAutoscaler{}).
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Watches(
 			&vpav1.VerticalPodAutoscaler{},
 			handler.EnqueueRequestsFromMapFunc(r.findObjectsForVPA),
