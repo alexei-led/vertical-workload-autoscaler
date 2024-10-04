@@ -82,6 +82,10 @@ The VWA will detect conflicts with other autoscaler controllers, such as Horizon
 
 The VWA supports adding custom annotations to the target object. This is particularly useful in scenarios where GitOps tools like ArgoCD or Flux continuously manage the cluster state. By adding a specific annotation to the target object, the VWA can prevent these tools from reverting the changes made by the VWA.
 
+## Architecture
+
+[![VWA Architecture](docs/images/vwa-architecture.png)](docs/images/vwa-architecture.png)
+
 ## Installation
 
 ### VPA Recommender

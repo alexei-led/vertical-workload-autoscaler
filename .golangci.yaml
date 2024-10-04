@@ -4,7 +4,7 @@ run:
   tests: false
 
 issues:
-  # don't skip warning about doc comments
+  # don't skip warning about docs comments
   # don't exclude the default set of lint
   exclude-use-default: false
   # restore some of the defaults
