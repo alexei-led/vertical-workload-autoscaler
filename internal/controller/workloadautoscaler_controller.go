@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -91,7 +92,20 @@ func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager
 	r.Recorder = mgr.GetEventRecorderFor("vwa-controller-manager")
 	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&vwav1.VerticalWorkloadAutoscaler{}).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
+		WithEventFilter(predicate.Funcs{
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				oldVWA, okOld := e.ObjectOld.(*vwav1.VerticalWorkloadAutoscaler)
+				newVWA, okNew := e.ObjectNew.(*vwav1.VerticalWorkloadAutoscaler)
+				if !okOld || !okNew {
+					return false
+				}
+				// Trigger only if VWA spec changed, ignore status updates
+				return !reflect.DeepEqual(oldVWA.Spec, newVWA.Spec)
+			},
+			CreateFunc:  func(e event.CreateEvent) bool { return true },   // Trigger on create
+			DeleteFunc:  func(e event.DeleteEvent) bool { return false },  // Ignore delete
+			GenericFunc: func(e event.GenericEvent) bool { return false }, // Ignore generic
+		}).
 		Watches(
 			&vpav1.VerticalPodAutoscaler{},
 			handler.EnqueueRequestsFromMapFunc(r.findVWAForVPA),
