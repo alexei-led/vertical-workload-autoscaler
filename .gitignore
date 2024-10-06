@@ -11,9 +11,6 @@ Dockerfile.cross
 *.env
 *.in
 
-# demo files
-demo/
-
 # dist files
 dist/
 

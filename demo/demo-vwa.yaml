@@ -1,0 +1,14 @@
+apiVersion: autoscaling.workload.io/v1alpha1
+kind: VerticalWorkloadAutoscaler
+metadata:
+  name: demo-vwa
+spec:
+  vpaReference:
+    name: demo-vpa
+  avoidCPULimit: false
+  customAnnotations:
+    demo-test-annotation: CustomValue
+  updateFrequency: 10m
+  updateTolerance:
+    cpu: 15
+    memory: 15

@@ -1,0 +1,15 @@
+apiVersion: autoscaling.workload.io/v1alpha1
+kind: VerticalWorkloadAutoscaler
+metadata:
+  name: redis-vwa
+spec:
+  vpaReference:
+    name: redis-vpa
+  customAnnotations:
+    redis-test-annotation: redis-cluster-demo
+  avoidCPULimit: true
+  updateFrequency: 5m
+  qualityOfService: Burstable
+  updateTolerance:
+    cpu: 10
+    memory: 15

@@ -1,0 +1,56 @@
+# Demo: Overprovisioned Deployment
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-overprovisioned
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+    spec:
+      containers:
+        - name: demo-app
+          image: alpine:3.20
+          command: ["/bin/sh", "-c", "tail -f /dev/null"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+# Vertical Pod Autoscaler for the overprovisioned deployment
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: demo-vpa
+spec:
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: demo-overprovisioned
+  updatePolicy:
+    updateMode: "Off"
+
+# Vertical Workload Autoscaler for the overprovisioned deployment
+apiVersion: autoscaling.workload.io/v1alpha1
+kind: VerticalWorkloadAutoscaler
+metadata:
+  name: demo-vwa
+spec:
+  vpaReference:
+    name: demo-vpa
+  avoidCPULimit: true
+  customAnnotations:
+    demo-test-annotation: CustomValue
+  updateFrequency: 10m
+  updateTolerance:
+    cpu: 15
+    memory: 15
