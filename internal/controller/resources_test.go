@@ -896,7 +896,7 @@ func TestUpdateBurstableResources(t *testing.T) {
 					corev1.ResourceMemory: resource.MustParse("210Mi"),
 				},
 				UpperBound: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("250m"),
+					corev1.ResourceCPU:    resource.MustParse("210m"),
 					corev1.ResourceMemory: resource.MustParse("410Mi"),
 				},
 			},
@@ -932,7 +932,7 @@ func TestUpdateBurstableResources(t *testing.T) {
 					corev1.ResourceMemory: resource.MustParse("300Mi"),
 				},
 				UpperBound: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("250m"),
+					corev1.ResourceCPU:    resource.MustParse("210m"),
 					corev1.ResourceMemory: resource.MustParse("500Mi"),
 				},
 			},
@@ -983,6 +983,42 @@ func TestUpdateBurstableResources(t *testing.T) {
 				Limits: corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("500m"),
 					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+			},
+		},
+		{
+			name: "Update only Memory limits when CPU change is within tolerance",
+			currentReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+			},
+			containerRec: vpav1.RecommendedContainerResources{
+				LowerBound: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("105m"),
+					corev1.ResourceMemory: resource.MustParse("210Mi"),
+				},
+				UpperBound: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("210m"),
+					corev1.ResourceMemory: resource.MustParse("500Mi"),
+				},
+			},
+			cpuTolerance:    0.1,
+			memoryTolerance: 0.1,
+			avoidCPULimit:   false,
+			expectedReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("500Mi"),
 				},
 			},
 		},
