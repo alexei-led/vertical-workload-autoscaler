@@ -143,18 +143,28 @@ func updateBurstableResources(currentReq corev1.ResourceRequirements, containerR
 	upperBoundCPU := containerRec.UpperBound[corev1.ResourceCPU]
 	upperBoundMemory := containerRec.UpperBound[corev1.ResourceMemory]
 
+	// If the current request is lower than the lower bound, update it to the lower bound
 	if applyUpdate(currentReq.Requests[corev1.ResourceCPU], lowerBoundCPU, cpuTolerance) {
 		newReq.Requests[corev1.ResourceCPU] = lowerBoundCPU
+	}
+	// If the current limit is lower than the upper bound, update it to the upper bound if avoidCPULimit is false
+	if applyUpdate(currentReq.Limits[corev1.ResourceCPU], upperBoundCPU, cpuTolerance) {
 		if avoidCPULimit {
 			delete(newReq.Limits, corev1.ResourceCPU)
 		} else {
 			newReq.Limits[corev1.ResourceCPU] = upperBoundCPU
 		}
 	}
+
+	// If the current request is lower than the lower bound, update it to the lower bound
 	if applyUpdate(currentReq.Requests[corev1.ResourceMemory], lowerBoundMemory, memoryTolerance) {
 		newReq.Requests[corev1.ResourceMemory] = lowerBoundMemory
+	}
+	// If the current limit is lower than the upper bound, update it to the upper bound
+	if applyUpdate(currentReq.Limits[corev1.ResourceMemory], upperBoundMemory, memoryTolerance) {
 		newReq.Limits[corev1.ResourceMemory] = upperBoundMemory
 	}
+
 	return newReq
 }
 
