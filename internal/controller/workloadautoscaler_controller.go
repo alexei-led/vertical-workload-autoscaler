@@ -239,9 +239,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	var ignoreCPU, ignoreMemory bool
 	hpa, err := r.findHPAForVWA(ctx, wa)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("there is no HPA referencing the same target object")
-		} else {
+		if !errors.IsNotFound(err) {
 			logger.Error(err, "unexpected error while finding HPA")
 			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to find HPA") //nolint:errcheck
 			return ctrl.Result{}, err                                                                                        // Retry on error
@@ -253,7 +251,6 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	}
 	// requeue if ignore flags were updated
 	if wa.Spec.IgnoreCPURecommendations != ignoreCPU || wa.Spec.IgnoreMemoryRecommendations != ignoreMemory {
-		logger.Info("ignore flags updated", "ignoreCPU", ignoreCPU, "ignoreMemory", ignoreMemory)
 		r.recordEvent(wa, "Normal", "IgnoreFlagsUpdated", "ignore flags updated")
 		r.updateStatusCondition(ctx, wa, ConditionTypeReconciled, metav1.ConditionTrue, ReasonUpdatedResources, "updated ignore flags") //nolint:errcheck
 		return ctrl.Result{Requeue: true}, nil
@@ -277,13 +274,9 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 			logger.Error(err, "failed to update VerticalWorkloadAutoscaler status")
 			return ctrl.Result{}, err // Retry on error
 		}
-
 		r.recordEvent(wa, "Normal", "ResourcesUpdated", "resources updated")
 		r.updateStatusCondition(ctx, wa, ConditionTypeReconciled, metav1.ConditionTrue, ReasonUpdatedResources, "updated resources") //nolint:errcheck
-		// Record that the VWA was reconciled
-		logger.Info("successfully reconciled VerticalWorkloadAutoscaler")
 	} else {
-		logger.Info("waiting for VPA recommendations")
 		r.recordEvent(wa, "Normal", "WaitingForRecommendations", "waiting for VPA recommendations")
 		r.updateStatusCondition(ctx, wa, ConditionTypeReconciled, metav1.ConditionFalse, ReasonWaitingForRecommendations, "waiting for VPA recommendations") //nolint:errcheck
 	}
