@@ -9,16 +9,15 @@ kubectl apply -f redis-service.yaml
 Enable cluster mode by running the following command. Make sure to use the DNS names of the Redis headless services to create the cluster. This will allow the Redis nodes to communicate with each other using the DNS names of the Redis headless services. And also, recover from Pod restarts/upgrades.
 
 ```shell
-# Create the Redis Cluster using the DNS names of the Redis headless services 
-kubectl exec -it redis-cluster-0 -- redis-cli --cluster create $(kubectl get pods -l app=redis-cluster -o jsonpath='{range .items[*]}{.metadata.name}.redis-cluster.default.svc.cluster.local:6379 {end}') --cluster-replicas 0
-        
+# Create the Redis Cluster 
+kubectl exec -it redis-cluster-0 -- redis-cli --cluster create $(kubectl get pods -l app=redis-cluster -o jsonpath='{range.items[*]}{.status.podIP}:6379 {end}') --cluster-replicas 0
 ```
 
-# Verify Cluster
+## Verify Cluster
 
 ```shell
 kubectl get statefulset
-kubectl get pods
+kubectl get pods -l app=redis-cluster -owide
 kubectl exec -it redis-cluster-0 -- redis-cli cluster nodes
 kubectl exec -it redis-cluster-0 -- redis-cli cluster info
 ```
@@ -52,7 +51,16 @@ This benchmark will:
 – Use pipelining for improved performance
 – Operate correctly with your Redis Cluster setup
 
-# Cleanup
+## Fix cluster after a Pods' restart
+
+```shell
+for i in 0 1 2; do
+  kubectl exec redis-cluster-$i -- redis-cli flushall
+  kubectl exec redis-cluster-$i -- redis-cli cluster reset
+done
+```
+
+## Cleanup
 
 ```shell
 kubectl delete -f redis-statefulset.yaml
