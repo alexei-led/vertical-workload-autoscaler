@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongodb-benchmark
+spec:
+  template:
+    spec:
+      containers:
+      - name: ycsb
+        image: alexeiled/ycsb-mongo:latest
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            while true; do
+              ./bin/ycsb run mongodb -P workloads/workloada -s -p mongodb.url=mongodb://mongodb:27017/ycsb -p target=5000 -p maxexecutiontime=600;
+              sleep 2;
+            done
+      restartPolicy: Never
+  backoffLimit: 4

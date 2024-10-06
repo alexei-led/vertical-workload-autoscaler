@@ -1,0 +1,15 @@
+apiVersion: autoscaling.workload.io/v1alpha1
+kind: VerticalWorkloadAutoscaler
+metadata:
+  name: mongodb-vwa
+spec:
+  vpaReference:
+    name: mongodb-vpa
+  customAnnotations:
+    mongodb-test-annotation: mongodb-cluster-demo
+  avoidCPULimit: true
+  updateFrequency: 10m
+  qualityOfService: Burstable
+  updateTolerance:
+    cpu: 10
+    memory: 15
