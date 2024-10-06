@@ -91,8 +91,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) getVWA(ctx context.Context, names
 func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Recorder = mgr.GetEventRecorderFor("vwa-controller-manager")
 	if err := ctrl.NewControllerManagedBy(mgr).
-		For(&vwav1.VerticalWorkloadAutoscaler{}).
-		WithEventFilter(predicate.Funcs{
+		For(&vwav1.VerticalWorkloadAutoscaler{}, builder.WithPredicates(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
 				oldVWA, okOld := e.ObjectOld.(*vwav1.VerticalWorkloadAutoscaler)
 				newVWA, okNew := e.ObjectNew.(*vwav1.VerticalWorkloadAutoscaler)
@@ -105,21 +104,34 @@ func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager
 			CreateFunc:  func(e event.CreateEvent) bool { return true },   // Trigger on create
 			DeleteFunc:  func(e event.DeleteEvent) bool { return false },  // Ignore delete
 			GenericFunc: func(e event.GenericEvent) bool { return false }, // Ignore generic
-		}).
+		})).
 		Watches(
 			&vpav1.VerticalPodAutoscaler{},
 			handler.EnqueueRequestsFromMapFunc(r.findVWAForVPA),
 			builder.WithPredicates(predicate.Funcs{
+				UpdateFunc: func(e event.UpdateEvent) bool {
+					oldVPA, okOld := e.ObjectOld.(*vpav1.VerticalPodAutoscaler)
+					newVPA, okNew := e.ObjectNew.(*vpav1.VerticalPodAutoscaler)
+					if !okOld || !okNew {
+						return false
+					}
+					// Trigger only on updates to the status recommendation field
+					return !reflect.DeepEqual(oldVPA.Status.Recommendation, newVPA.Status.Recommendation)
+				},
 				CreateFunc:  func(e event.CreateEvent) bool { return false },  // Ignore create
 				DeleteFunc:  func(e event.DeleteEvent) bool { return false },  // Ignore delete
-				UpdateFunc:  func(e event.UpdateEvent) bool { return true },   // Trigger only on update
 				GenericFunc: func(e event.GenericEvent) bool { return false }, // Ignore generic
 			})).
 		// Map HPA updates to VWA reconciliation
 		Watches(
 			&autoscalingv2.HorizontalPodAutoscaler{},
 			handler.EnqueueRequestsFromMapFunc(r.findVWAForHPA),
-		).
+			builder.WithPredicates(predicate.Funcs{
+				UpdateFunc:  func(e event.UpdateEvent) bool { return true },   // Trigger on updates
+				CreateFunc:  func(e event.CreateEvent) bool { return true },   // Trigger on create
+				DeleteFunc:  func(e event.DeleteEvent) bool { return true },   // Trigger on delete
+				GenericFunc: func(e event.GenericEvent) bool { return false }, // Ignore generic
+			})).
 		Complete(r); err != nil {
 		log.Log.Error(err, "failed to setup controller with manager")
 		return err
