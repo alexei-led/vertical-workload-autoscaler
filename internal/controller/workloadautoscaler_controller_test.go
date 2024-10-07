@@ -84,6 +84,8 @@ func TestHandleVWAChange(t *testing.T) {
 	_ = autoscalingv1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
 
+	updateModeOff := vpav1.UpdateModeOff
+
 	tests := []struct {
 		name                string
 		vwa                 vwav1.VerticalWorkloadAutoscaler
@@ -172,6 +174,9 @@ func TestHandleVWAChange(t *testing.T) {
 			vpa: &vpav1.VerticalPodAutoscaler{
 				ObjectMeta: metav1.ObjectMeta{Name: "vpa1", Namespace: "default"},
 				Spec: vpav1.VerticalPodAutoscalerSpec{
+					UpdatePolicy: &vpav1.PodUpdatePolicy{
+						UpdateMode: &updateModeOff,
+					},
 					TargetRef: &autoscalingv1.CrossVersionObjectReference{
 						Kind: "Deployment",
 						Name: "deployment1",
@@ -266,6 +271,9 @@ func TestHandleVWAChange(t *testing.T) {
 			vpa: &vpav1.VerticalPodAutoscaler{
 				ObjectMeta: metav1.ObjectMeta{Name: "vpa1", Namespace: "default"},
 				Spec: vpav1.VerticalPodAutoscalerSpec{
+					UpdatePolicy: &vpav1.PodUpdatePolicy{
+						UpdateMode: &updateModeOff,
+					},
 					TargetRef: &autoscalingv1.CrossVersionObjectReference{
 						Kind: "Deployment",
 						Name: "deployment1",
