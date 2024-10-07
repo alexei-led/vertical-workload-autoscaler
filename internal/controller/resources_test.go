@@ -1086,6 +1086,76 @@ func TestUpdateBurstableResources(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Update CPU and Memory when both exceed tolerance",
+			currentReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+			},
+			containerRec: vpav1.RecommendedContainerResources{
+				LowerBound: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+				UpperBound: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("210m"),
+					corev1.ResourceMemory: resource.MustParse("410Mi"),
+				},
+			},
+			cpuTolerance:    0.1,
+			memoryTolerance: 0.1,
+			avoidCPULimit:   false,
+			expectedReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("210m"),
+					corev1.ResourceMemory: resource.MustParse("410Mi"),
+				},
+			},
+		},
+		{
+			name: "Ensure limit is at least as large as the request",
+			currentReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("250Mi"),
+				},
+			},
+			containerRec: vpav1.RecommendedContainerResources{
+				LowerBound: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("230Mi"),
+				},
+				UpperBound: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("110m"),
+					corev1.ResourceMemory: resource.MustParse("260Mi"),
+				},
+			},
+			cpuTolerance:    0.1,
+			memoryTolerance: 0.1,
+			avoidCPULimit:   false,
+			expectedReq: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("230Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("110m"),
+					corev1.ResourceMemory: resource.MustParse("260Mi"),
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
