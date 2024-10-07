@@ -199,6 +199,13 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 		return ctrl.Result{}, nil                                                                                                             // Avoid calling reconcile again
 	}
 
+	// if VPA UpdateMode is not Off, skip the reconciliation since VPA Updater will handle it
+	if vpa.Spec.UpdatePolicy == nil || vpa.Spec.UpdatePolicy.UpdateMode == nil || vpa.Spec.UpdatePolicy.UpdateMode != nil && *vpa.Spec.UpdatePolicy.UpdateMode != vpav1.UpdateModeOff {
+		logger.Info("VPA UpdateMode is not Off: VPA Updater will handle the reconciliation", "VPA", vpa.Name)
+		r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionFalse, ReasonUpdateModeNotOff, "VPA UpdatePolicy.UpdateMode is not Off") // nolint:errcheck
+		return ctrl.Result{}, nil                                                                                                                     // Avoid calling reconcile
+	}
+
 	// Fetch the target object from the VPA configuration
 	targetObject, err := r.fetchTargetObject(ctx, vpa)
 	if err != nil {

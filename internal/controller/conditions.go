@@ -25,6 +25,8 @@ const (
 	ReasonTargetObjectNotFound = "TargetObjectNotFound"
 	// ReasonNoRecommendation is the condition reason for no recommendation
 	ReasonNoRecommendation = "NoRecommendation"
+	// ReasonUpdateModeNotOff is the condition reason for VPA update policy update mode not off
+	ReasonUpdateModeNotOff = "UpdateModeNotOff"
 	// ReasonAPIError is the condition reason for Kubernetes API error
 	ReasonAPIError = "APIError"
 	// ReasonVPAFound is the condition reason for VPA found
