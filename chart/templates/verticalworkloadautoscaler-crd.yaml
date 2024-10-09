@@ -1,0 +1,361 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: verticalworkloadautoscalers.autoscaling.workload.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  labels:
+  {{- include "chart.labels" . | nindent 4 }}
+spec:
+  group: autoscaling.workload.io
+  names:
+    kind: VerticalWorkloadAutoscaler
+    listKind: VerticalWorkloadAutoscalerList
+    plural: verticalworkloadautoscalers
+    shortNames:
+    - vwa
+    singular: verticalworkloadautoscaler
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: VerticalWorkloadAutoscaler is the Schema for the VerticalWorkloadAutoscalers
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: VerticalWorkloadAutoscalerSpec defines the desired state of
+              VerticalWorkloadAutoscaler
+            properties:
+              allowedUpdateWindows:
+                description: |-
+                  AllowedUpdateWindows defines specific time windows during which updates to resource requests
+                  are permitted. This can help minimize disruptions during peak usage times.
+                  Each update window should specify the day of the week, start time, and end time.
+                items:
+                  description: UpdateWindow defines a time window for allowed updates
+                  properties:
+                    dayOfWeek:
+                      description: DayOfWeek represents the day of the week for the
+                        update window.
+                      enum:
+                      - Monday
+                      - Tuesday
+                      - Wednesday
+                      - Thursday
+                      - Friday
+                      - Saturday
+                      - Sunday
+                      type: string
+                    endTime:
+                      description: EndTime represents the end of the update window
+                      pattern: ^([01]?[0-9]|2[0-3]):[0-5][0-9]$
+                      type: string
+                    startTime:
+                      description: StartTime represents the start of the update window
+                      pattern: ^([01]?[0-9]|2[0-3]):[0-5][0-9]$
+                      type: string
+                    timeZone:
+                      description: TimeZone represents the time zone in IANA format,
+                        like "UTC" or "America/New_York"
+                      pattern: ^[A-Za-z]+/[A-Za-z_]+$
+                      type: string
+                  required:
+                  - dayOfWeek
+                  - endTime
+                  - startTime
+                  - timeZone
+                  type: object
+                type: array
+              avoidCPULimit:
+                default: true
+                description: |-
+                  AvoidCPULimit indicates whether the VWA should avoid setting CPU limits on the managed resource.
+                  If set to true, only resource requests will be set, which may be beneficial in scenarios
+                  where burstable workloads are expected. The default value is true.
+                type: boolean
+              customAnnotations:
+                additionalProperties:
+                  type: string
+                description: CustomAnnotations holds a map of annotations that will
+                  be applied to the target object.
+                type: object
+              ignoreCPURecommendations:
+                default: false
+                description: |-
+                  IgnoreCPURecommendations indicates whether to ignore scaling recommendations based on CPU usage.
+                  If set to true, the VWA will not adjust resource requests or limits based on CPU metrics.
+                type: boolean
+              ignoreMemoryRecommendations:
+                default: false
+                description: |-
+                  IgnoreMemoryRecommendations indicates whether to ignore scaling recommendations based on memory usage.
+                  If set to true, the VWA will not adjust resource requests or limits based on memory metrics.
+                type: boolean
+              qualityOfService:
+                allOf:
+                - enum:
+                  - Burstable
+                  - Guaranteed
+                - enum:
+                  - Guaranteed
+                  - Burstable
+                default: Guaranteed
+                description: |-
+                  QualityOfService defines the quality of service class to be applied to the managed resource.
+                  This can help Kubernetes make scheduling decisions based on the resource guarantees.
+                  Possible values are:
+                  - "Guaranteed": CPU and Memory requests are equal to limits for all containers.
+                  - "Burstable": Requests are lower than limits, allowing bursts of usage.
+                  If not set, the default is "Guaranteed".
+                type: string
+              updateFrequency:
+                default: 5m
+                description: |-
+                  UpdateFrequency specifies how often the VWA should check and apply updates to resource requests.
+                  It is defined as a duration (e.g., "30s", "1m"). The default value is set to 5 minutes if not specified.
+                type: string
+              updateTolerance:
+                description: |-
+                  UpdateTolerance defines the tolerance for updates to resource requests.
+                  It accepts two optional subfields: cpu and memory. Both subfields should accept float values between 0 and 1.
+                  The default value for both cpu and memory is 0.10 (10%).
+                properties:
+                  cpu:
+                    default: 10
+                    description: 'CPU tolerance for updates (as a percentage, default:
+                      10%)'
+                    maximum: 100
+                    minimum: 0
+                    type: integer
+                  memory:
+                    default: 10
+                    description: 'Memory tolerance for updates (as a percentage, default:
+                      10%)'
+                    maximum: 100
+                    minimum: 0
+                    type: integer
+                type: object
+              vpaReference:
+                description: |-
+                  VPAReference defines the reference to the VerticalPodAutoscaler that this VWA is managing.
+                  This allows the VWA to coordinate with the VPA to ensure optimal resource allocation.
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - vpaReference
+            type: object
+          status:
+            description: VerticalWorkloadAutoscalerStatus defines the observed state
+              of VerticalWorkloadAutoscaler
+            properties:
+              conditions:
+                description: |-
+                  Conditions contains the current conditions of the VWA, which can provide insights
+                  about its operational state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              conflicts:
+                description: Conflicts contains a list of resources that conflict with
+                  the VWA's recommendations.
+                items:
+                  properties:
+                    conflictWith:
+                      type: string
+                    reason:
+                      type: string
+                    resource:
+                      type: string
+                  required:
+                  - conflictWith
+                  - resource
+                  type: object
+                type: array
+              lastUpdated:
+                description: LastUpdated indicates the last time the VWA status was
+                  updated.
+                format: date-time
+                type: string
+              recommendedRequests:
+                additionalProperties:
+                  description: ResourceRequirements describes the compute resource requirements.
+                  properties:
+                    claims:
+                      description: |-
+                        Claims lists the names of resources, defined in spec.resourceClaims,
+                        that are used by this container.
+  
+                        This is an alpha field and requires enabling the
+                        DynamicResourceAllocation feature gate.
+  
+                        This field is immutable. It can only be set for containers.
+                      items:
+                        description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                        properties:
+                          name:
+                            description: |-
+                              Name must match the name of one entry in pod.spec.resourceClaims of
+                              the Pod where this field is used. It makes that resource available
+                              inside a container.
+                            type: string
+                          request:
+                            description: |-
+                              Request is the name chosen for a request in the referenced claim.
+                              If empty, everything from the claim is made available, otherwise
+                              only the result of this request.
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - name
+                      x-kubernetes-list-type: map
+                    limits:
+                      additionalProperties:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      description: |-
+                        Limits describes the maximum amount of compute resources allowed.
+                        More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                      type: object
+                    requests:
+                      additionalProperties:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      description: |-
+                        Requests describes the minimum amount of compute resources required.
+                        If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                        otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                        More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                      type: object
+                  type: object
+                description: |-
+                  RecommendedRequests maps the recommended resource requests for the managed resource.
+                  The key is the container name, and the value is the resource requirements.
+                type: object
+              scaleTargetRef:
+                description: |-
+                  ScaleTargetRef defines the reference to the resource being managed by the VWA.
+                  This could reference different kinds of resources (Deployment, StatefulSet, DaemonSet, ReplicaSet, CronJob, Job).
+                properties:
+                  apiVersion:
+                    description: apiVersion is the API version of the referent
+                    type: string
+                  kind:
+                    description: 'kind is the kind of the referent; More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+                    type: string
+                  name:
+                    description: 'name is the name of the referent; More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names'
+                    type: string
+                required:
+                - kind
+                - name
+                type: object
+              skipReason:
+                description: SkipReason provides the reason for skipped updates, if
+                  applicable.
+                type: string
+              skippedUpdates:
+                description: SkippedUpdates indicates whether updates were skipped during
+                  the last reconciliation.
+                type: boolean
+              updateCount:
+                description: UpdateCount represents the number of updates applied by
+                  the VWA.
+                format: int32
+                type: integer
+            required:
+            - scaleTargetRef
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

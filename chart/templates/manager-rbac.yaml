@@ -1,0 +1,97 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "chart.fullname" . }}-manager-role
+  labels:
+  {{- include "chart.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+  - update
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  - deployments
+  - replicasets
+  - statefulsets
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  - horizontalpodautoscalers/status
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - autoscaling.k8s.io
+  resources:
+  - verticalpodautoscalers
+  - verticalpodautoscalers/status
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - autoscaling.workload.io
+  resources:
+  - verticalworkloadautoscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - autoscaling.workload.io
+  resources:
+  - verticalworkloadautoscalers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - autoscaling.workload.io
+  resources:
+  - verticalworkloadautoscalers/status
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  - jobs
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "chart.fullname" . }}-manager-rolebinding
+  labels:
+  {{- include "chart.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: '{{ include "chart.fullname" . }}-manager-role'
+subjects:
+- kind: ServiceAccount
+  name: '{{ include "chart.fullname" . }}-controller-manager'
+  namespace: '{{ .Release.Namespace }}'

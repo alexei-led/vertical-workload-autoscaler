@@ -153,12 +153,14 @@ $(LOCALBIN):
 ## Tool Binaries
 KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
+HELMLIFY ?= $(LOCALBIN)/helmify
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.3
+HELMLIFY_VERSION ?= v0.4.14
 CONTROLLER_TOOLS_VERSION ?= v0.16.1
 ENVTEST_VERSION ?= release-0.19
 GOLANGCI_LINT_VERSION ?= v1.61.0
@@ -167,6 +169,15 @@ GOLANGCI_LINT_VERSION ?= v1.61.0
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
 	$(call go-install-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v5,$(KUSTOMIZE_VERSION))
+
+# install helmify
+.PHONY: helmify
+helmify: $(HELMLIFY) ## Download helmify locally if necessary.
+$(HELMLIFY): $(LOCALBIN)
+	$(call go-install-tool,$(HELMLIFY),github.com/arttor/helmify/cmd/helmify,$(HELMLIFY_VERSION))
+
+helm: manifests kustomize helmify
+	$(KUSTOMIZE) build config/default | $(HELMLIFY)
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
