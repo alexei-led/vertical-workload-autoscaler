@@ -358,7 +358,7 @@ func TestHandleVWAChange(t *testing.T) {
 			client := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&vwav1.VerticalWorkloadAutoscaler{}).WithObjects(objs...).Build()
 			r := &VerticalWorkloadAutoscalerReconciler{Client: client}
 
-			result, err := r.handleVWAChange(context.Background(), &tt.vwa)
+			result, err := r.handleVWAChange(context.Background(), &tt.vwa) // Pass by reference
 			assert.Equal(t, tt.expected, err)
 			assert.Equal(t, ctrl.Result{}, result)
 

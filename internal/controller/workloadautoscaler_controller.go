@@ -264,7 +264,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	}
 
 	// Calculate new resource values based on VPA recommendations and VWA configuration
-	newResources := r.calculateNewResources(*wa, currentResources, vpa.Status.Recommendation)
+	newResources := r.calculateNewResources(wa, currentResources, vpa.Status.Recommendation)
 
 	// Update the target resource
 	updated, err := r.updateTargetObject(ctx, targetObject, wa, newResources)

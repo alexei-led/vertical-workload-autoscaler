@@ -51,10 +51,10 @@ func (r *VerticalWorkloadAutoscalerReconciler) fetchTargetObject(ctx context.Con
 
 // calculateNewResources calculates the new resource requirements based on the VPA recommendations
 // and the VWA configuration (tolerance, quality of service, etc.)
-func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.VerticalWorkloadAutoscaler, currentResources map[string]corev1.ResourceRequirements, recommendations *vpav1.RecommendedPodResources) map[string]corev1.ResourceRequirements {
+func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa *vwav1.VerticalWorkloadAutoscaler, currentResources map[string]corev1.ResourceRequirements, recommendations *vpav1.RecommendedPodResources) map[string]corev1.ResourceRequirements {
 	newResources := make(map[string]corev1.ResourceRequirements)
 
-	cpuTolerance, memoryTolerance := getTolerances(wa)
+	cpuTolerance, memoryTolerance := getTolerances(wa) // Dereference to get the value
 
 	// Default QualityOfService to Guaranteed if not set
 	if wa.Spec.QualityOfService == "" {
@@ -71,6 +71,17 @@ func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.Ve
 			newReq = updateBurstableResources(currentReq, containerRec, cpuTolerance, memoryTolerance, wa.Spec.AvoidCPULimit)
 		}
 
+		// If the IgnoreCPURecommendations or IgnoreMemoryRecommendations is set to true, keep the current value
+		if wa.Spec.IgnoreCPURecommendations {
+			newReq.Requests[corev1.ResourceCPU] = currentReq.Requests[corev1.ResourceCPU]
+			newReq.Limits[corev1.ResourceCPU] = currentReq.Limits[corev1.ResourceCPU]
+		}
+		// If the IgnoreCPURecommendations or IgnoreMemoryRecommendations is set to true, keep the current value
+		if wa.Spec.IgnoreMemoryRecommendations {
+			newReq.Requests[corev1.ResourceMemory] = currentReq.Requests[corev1.ResourceMemory]
+			newReq.Limits[corev1.ResourceMemory] = currentReq.Limits[corev1.ResourceMemory]
+		}
+
 		newResources[containerRec.ContainerName] = *newReq
 	}
 
@@ -78,7 +89,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) calculateNewResources(wa vwav1.Ve
 }
 
 // getTolerances returns the CPU and memory tolerances based on the VWA configuration
-func getTolerances(wa vwav1.VerticalWorkloadAutoscaler) (cpuTolerance, memoryTolerance float64) {
+func getTolerances(wa *vwav1.VerticalWorkloadAutoscaler) (cpuTolerance, memoryTolerance float64) {
 	cpuTolerance, memoryTolerance = defaultCPUTolerance, defaultMemoryTolerance
 
 	if wa.Spec.UpdateTolerance != nil {

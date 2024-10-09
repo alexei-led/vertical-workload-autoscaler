@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/alexei-led/vertical-workload-autoscaler
-  newTag: 0.1.0
+  newTag: 0.1.1

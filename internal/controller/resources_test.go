@@ -502,7 +502,7 @@ func TestGetTolerances(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cpuTolerance, memoryTolerance := getTolerances(tt.wa)
+			cpuTolerance, memoryTolerance := getTolerances(&tt.wa)
 			assert.Equal(t, tt.expectedCPU, cpuTolerance)
 			assert.Equal(t, tt.expectedMemory, memoryTolerance)
 		})
@@ -1439,12 +1439,100 @@ func TestCalculateNewResources(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Ignore CPU recommendations",
+			wa: vwav1.VerticalWorkloadAutoscaler{
+				Spec: vwav1.VerticalWorkloadAutoscalerSpec{
+					IgnoreCPURecommendations: true,
+					AvoidCPULimit:            false,
+				},
+			},
+			currentResources: map[string]corev1.ResourceRequirements{
+				"test-container": {
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("100m"),
+						corev1.ResourceMemory: resource.MustParse("200Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("200m"),
+						corev1.ResourceMemory: resource.MustParse("400Mi"),
+					},
+				},
+			},
+			recommendations: &vpav1.RecommendedPodResources{
+				ContainerRecommendations: []vpav1.RecommendedContainerResources{
+					{
+						ContainerName: "test-container",
+						Target: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("300m"),
+							corev1.ResourceMemory: resource.MustParse("600Mi"),
+						},
+					},
+				},
+			},
+			expected: map[string]corev1.ResourceRequirements{
+				"test-container": {
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("100m"),
+						corev1.ResourceMemory: resource.MustParse("600Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("200m"),
+						corev1.ResourceMemory: resource.MustParse("600Mi"),
+					},
+				},
+			},
+		},
+		{
+			name: "Ignore Memory recommendations",
+			wa: vwav1.VerticalWorkloadAutoscaler{
+				Spec: vwav1.VerticalWorkloadAutoscalerSpec{
+					IgnoreMemoryRecommendations: true,
+					AvoidCPULimit:               false,
+				},
+			},
+			currentResources: map[string]corev1.ResourceRequirements{
+				"test-container": {
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("100m"),
+						corev1.ResourceMemory: resource.MustParse("200Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("200m"),
+						corev1.ResourceMemory: resource.MustParse("400Mi"),
+					},
+				},
+			},
+			recommendations: &vpav1.RecommendedPodResources{
+				ContainerRecommendations: []vpav1.RecommendedContainerResources{
+					{
+						ContainerName: "test-container",
+						Target: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("300m"),
+							corev1.ResourceMemory: resource.MustParse("600Mi"),
+						},
+					},
+				},
+			},
+			expected: map[string]corev1.ResourceRequirements{
+				"test-container": {
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("300m"),
+						corev1.ResourceMemory: resource.MustParse("200Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("300m"),
+						corev1.ResourceMemory: resource.MustParse("400Mi"),
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &VerticalWorkloadAutoscalerReconciler{}
-			result := r.calculateNewResources(tt.wa, tt.currentResources, tt.recommendations)
+			result := r.calculateNewResources(&tt.wa, tt.currentResources, tt.recommendations)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
