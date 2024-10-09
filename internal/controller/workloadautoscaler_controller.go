@@ -267,7 +267,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	newResources := r.calculateNewResources(wa, currentResources, vpa.Status.Recommendation)
 
 	// Update the target resource
-	updated, err := r.updateTargetObject(ctx, targetObject, wa, newResources)
+	updated, err := r.updateTargetObject(ctx, targetObject, wa, newResources, vpa.Spec.UpdatePolicy)
 	if err != nil {
 		logger.Error(err, "failed to update target resource")
 		r.recordEvent(wa, "Error", "UpdateFailed", "failed to update target resource")

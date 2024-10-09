@@ -223,7 +223,39 @@ func (r *VerticalWorkloadAutoscalerReconciler) fetchCurrentResources(targetObjec
 	return currentResources, nil
 }
 
-func (r *VerticalWorkloadAutoscalerReconciler) updateTargetObject(ctx context.Context, targetObject client.Object, vwa *vwav1.VerticalWorkloadAutoscaler, newResources map[string]corev1.ResourceRequirements) (bool, error) {
+func meetsEvictionRequirements(current, recommended corev1.ResourceRequirements, updatePolicy *vpav1.PodUpdatePolicy) bool {
+	if updatePolicy == nil || len(updatePolicy.EvictionRequirements) == 0 {
+		return true
+	}
+	for _, req := range updatePolicy.EvictionRequirements {
+		for _, resource := range req.Resources {
+			switch resource {
+			case corev1.ResourceCPU:
+				if !checkChangeRequirement(current.Requests.Cpu(), recommended.Requests.Cpu(), req.ChangeRequirement) {
+					return false
+				}
+			case corev1.ResourceMemory:
+				if !checkChangeRequirement(current.Requests.Memory(), recommended.Requests.Memory(), req.ChangeRequirement) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func checkChangeRequirement(current, recommended *resource.Quantity, requirement vpav1.EvictionChangeRequirement) bool {
+	switch requirement {
+	case vpav1.TargetHigherThanRequests:
+		return recommended.Cmp(*current) > 0
+	case vpav1.TargetLowerThanRequests:
+		return recommended.Cmp(*current) < 0
+	default:
+		return false
+	}
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) updateTargetObject(ctx context.Context, targetObject client.Object, vwa *vwav1.VerticalWorkloadAutoscaler, newResources map[string]corev1.ResourceRequirements, updatePolicy *vpav1.PodUpdatePolicy) (bool, error) {
 	needsUpdate := false
 
 	updateContainers := func(containers []corev1.Container) {
@@ -234,9 +266,12 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateTargetObject(ctx context.Co
 			container := &containers[i]
 			if recommendedResources, ok := newResources[container.Name]; ok {
 				if !resourceRequirementsEqual(container.Resources, recommendedResources) {
-					recommendedResources.Requests.DeepCopyInto(&container.Resources.Requests)
-					recommendedResources.Limits.DeepCopyInto(&container.Resources.Limits)
-					needsUpdate = true
+					// Check eviction requirements before updating
+					if meetsEvictionRequirements(container.Resources, recommendedResources, updatePolicy) {
+						recommendedResources.Requests.DeepCopyInto(&container.Resources.Requests)
+						recommendedResources.Limits.DeepCopyInto(&container.Resources.Limits)
+						needsUpdate = true
+					}
 				}
 			}
 		}

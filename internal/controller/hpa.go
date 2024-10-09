@@ -5,6 +5,7 @@ import (
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -54,9 +55,9 @@ func (r *VerticalWorkloadAutoscalerReconciler) getIgnoreFlags(hpa *autoscalingv2
 	ignoreMemory := false
 	for _, metric := range hpa.Spec.Metrics {
 		if metric.Type == autoscalingv2.ResourceMetricSourceType {
-			if metric.Resource.Name == "cpu" {
+			if metric.Resource.Name == corev1.ResourceCPU {
 				ignoreCPU = true
-			} else if metric.Resource.Name == "memory" {
+			} else if metric.Resource.Name == corev1.ResourceMemory {
 				ignoreMemory = true
 			}
 		}

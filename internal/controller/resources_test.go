@@ -53,6 +53,7 @@ func TestUpdateTargetObject(t *testing.T) {
 		name           string
 		targetResource _client.Object
 		newResources   map[string]corev1.ResourceRequirements
+		updatePolicy   *vpav1.PodUpdatePolicy
 		updated        bool
 		expectedError  bool
 	}{
@@ -117,6 +118,54 @@ func TestUpdateTargetObject(t *testing.T) {
 			},
 			expectedError: true,
 		},
+		{
+			name: "Skip update Deployment with UpdatePolicy",
+			targetResource: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-deployment-2", Namespace: "default"},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "test-container",
+									Resources: corev1.ResourceRequirements{
+										Requests: corev1.ResourceList{
+											corev1.ResourceCPU:    resource.MustParse("100m"),
+											corev1.ResourceMemory: resource.MustParse("200Mi"),
+										},
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU:    resource.MustParse("200m"),
+											corev1.ResourceMemory: resource.MustParse("400Mi"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			newResources: map[string]corev1.ResourceRequirements{
+				"test-container": {
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("50m"),
+						corev1.ResourceMemory: resource.MustParse("200Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("200m"),
+						corev1.ResourceMemory: resource.MustParse("400Mi"),
+					},
+				},
+			},
+			updatePolicy: &vpav1.PodUpdatePolicy{
+				EvictionRequirements: []*vpav1.EvictionRequirement{
+					&vpav1.EvictionRequirement{
+						Resources:         []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory},
+						ChangeRequirement: vpav1.TargetHigherThanRequests,
+					},
+				},
+			},
+			updated: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -126,7 +175,7 @@ func TestUpdateTargetObject(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create target resource: %v", err)
 			}
-			got, err := r.updateTargetObject(context.TODO(), tt.targetResource, vwa, tt.newResources)
+			got, err := r.updateTargetObject(context.TODO(), tt.targetResource, vwa, tt.newResources, tt.updatePolicy)
 			assert.Equal(t, tt.updated, got)
 			if tt.expectedError {
 				assert.Error(t, err)
@@ -134,12 +183,16 @@ func TestUpdateTargetObject(t *testing.T) {
 				assert.NoError(t, err)
 				// Check if annotations are set correctly
 				annotations := tt.targetResource.GetAnnotations()
-				assert.Equal(t, "annotation-value", annotations["annotation-key"])
+				if tt.updated {
+					assert.Equal(t, "annotation-value", annotations["annotation-key"])
+				}
 				// Check if resources are updated correctly
 				deployment := tt.targetResource.(*appsv1.Deployment)
 				container := deployment.Spec.Template.Spec.Containers[0]
-				assert.Equal(t, tt.newResources["test-container"].Requests, container.Resources.Requests)
-				assert.Equal(t, tt.newResources["test-container"].Limits, container.Resources.Limits)
+				if tt.updated {
+					assert.Equal(t, tt.newResources["test-container"].Requests, container.Resources.Requests)
+					assert.Equal(t, tt.newResources["test-container"].Limits, container.Resources.Limits)
+				}
 			}
 		})
 	}
@@ -1625,6 +1678,183 @@ func TestSetAnnotations(t *testing.T) {
 			r := &VerticalWorkloadAutoscalerReconciler{}
 			r.setAnnotations(tt.targetObject, tt.vwa)
 			assert.Equal(t, tt.expectedAnnotations, tt.targetObject.GetAnnotations())
+		})
+	}
+}
+
+func TestCheckChangeRequirement(t *testing.T) {
+	tests := []struct {
+		name        string
+		current     resource.Quantity
+		recommended resource.Quantity
+		requirement vpav1.EvictionChangeRequirement
+		expected    bool
+	}{
+		{
+			name:        "Target higher than requests",
+			current:     resource.MustParse("100m"),
+			recommended: resource.MustParse("200m"),
+			requirement: vpav1.TargetHigherThanRequests,
+			expected:    true,
+		},
+		{
+			name:        "Target not higher than requests",
+			current:     resource.MustParse("200m"),
+			recommended: resource.MustParse("100m"),
+			requirement: vpav1.TargetHigherThanRequests,
+			expected:    false,
+		},
+		{
+			name:        "Target lower than requests",
+			current:     resource.MustParse("200m"),
+			recommended: resource.MustParse("100m"),
+			requirement: vpav1.TargetLowerThanRequests,
+			expected:    true,
+		},
+		{
+			name:        "Target not lower than requests",
+			current:     resource.MustParse("100m"),
+			recommended: resource.MustParse("200m"),
+			requirement: vpav1.TargetLowerThanRequests,
+			expected:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checkChangeRequirement(&tt.current, &tt.recommended, tt.requirement)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestMeetsEvictionRequirements(t *testing.T) {
+	tests := []struct {
+		name         string
+		current      corev1.ResourceRequirements
+		recommended  corev1.ResourceRequirements
+		updatePolicy *vpav1.PodUpdatePolicy
+		expected     bool
+	}{
+		{
+			name: "No update policy",
+			current: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
+			},
+			recommended: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+			},
+			updatePolicy: nil,
+			expected:     true,
+		},
+		{
+			name: "Target higher than requests",
+			current: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
+			},
+			recommended: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+			},
+			updatePolicy: &vpav1.PodUpdatePolicy{
+				EvictionRequirements: []*vpav1.EvictionRequirement{
+					{
+						Resources:         []corev1.ResourceName{corev1.ResourceCPU},
+						ChangeRequirement: vpav1.TargetHigherThanRequests,
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Target not higher than requests",
+			current: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+			},
+			recommended: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
+			},
+			updatePolicy: &vpav1.PodUpdatePolicy{
+				EvictionRequirements: []*vpav1.EvictionRequirement{
+					{
+						Resources:         []corev1.ResourceName{corev1.ResourceCPU},
+						ChangeRequirement: vpav1.TargetHigherThanRequests,
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "Target lower than requests",
+			current: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+			},
+			recommended: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
+			},
+			updatePolicy: &vpav1.PodUpdatePolicy{
+				EvictionRequirements: []*vpav1.EvictionRequirement{
+					{
+						Resources:         []corev1.ResourceName{corev1.ResourceCPU},
+						ChangeRequirement: vpav1.TargetLowerThanRequests,
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Target not lower than requests",
+			current: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
+			},
+			recommended: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("400Mi"),
+				},
+			},
+			updatePolicy: &vpav1.PodUpdatePolicy{
+				EvictionRequirements: []*vpav1.EvictionRequirement{
+					{
+						Resources:         []corev1.ResourceName{corev1.ResourceCPU},
+						ChangeRequirement: vpav1.TargetLowerThanRequests,
+					},
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := meetsEvictionRequirements(tt.current, tt.recommended, tt.updatePolicy)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
