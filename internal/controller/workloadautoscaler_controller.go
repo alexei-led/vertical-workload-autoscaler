@@ -39,7 +39,9 @@ import (
 )
 
 const (
-	specVpaRefName = "spec.vpaReference.name"
+	specVpaRefName           = "spec.vpaReference.name"
+	statusScaleTargetRefName = "status.scaleTargetRef.name"
+	statusScaleTargetRefKind = "status.scaleTargetRef.kind"
 )
 
 // VerticalWorkloadAutoscalerReconciler reconciles a VerticalWorkloadAutoscaler object
@@ -97,16 +99,31 @@ func (r *VerticalWorkloadAutoscalerReconciler) getVWA(ctx context.Context, names
 func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, timeout time.Duration) error {
 	r.Recorder = mgr.GetEventRecorderFor("vwa-controller-manager")
 	r.Timeout = timeout
-	// index VWA objects by VPA reference name
-	// used to find VWA objects referencing the same VPA
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &vwav1.VerticalWorkloadAutoscaler{}, specVpaRefName, func(rawObj client.Object) []string {
-		wa := rawObj.(*vwav1.VerticalWorkloadAutoscaler)
-		return []string{wa.Spec.VPAReference.Name}
-	},
-	); err != nil {
-		log.Log.Error(err, "failed to setup field indexer by VPA reference name")
-		return err
+
+	// index VWA objects by spec VPA reference name, status scale target ref name and kind
+	// used to find VWA objects referencing the same VPA and HPA objects referencing the same scale target
+	indexers := []struct {
+		field string
+		index func(client.Object) []string
+	}{
+		{specVpaRefName, func(rawObj client.Object) []string {
+			return []string{rawObj.(*vwav1.VerticalWorkloadAutoscaler).Spec.VPAReference.Name}
+		}},
+		{statusScaleTargetRefName, func(o client.Object) []string {
+			return []string{o.(*vwav1.VerticalWorkloadAutoscaler).Status.ScaleTargetRef.Name}
+		}},
+		{statusScaleTargetRefKind, func(o client.Object) []string {
+			return []string{o.(*vwav1.VerticalWorkloadAutoscaler).Status.ScaleTargetRef.Kind}
+		}},
 	}
+
+	for _, indexer := range indexers {
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &vwav1.VerticalWorkloadAutoscaler{}, indexer.field, indexer.index); err != nil {
+			log.Log.Error(err, "failed to setup field indexer", "field", indexer.field)
+			return err
+		}
+	}
+
 	// Create a new controller with the manager
 	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&vwav1.VerticalWorkloadAutoscaler{}, builder.WithPredicates(predicate.Funcs{

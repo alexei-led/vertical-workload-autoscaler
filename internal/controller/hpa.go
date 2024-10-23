@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -17,21 +18,35 @@ func (r *VerticalWorkloadAutoscalerReconciler) findVWAForHPA(_ context.Context, 
 	if !ok {
 		return requests
 	}
+	// Create a list to store matching VWAs
+	var vwaList vwav1.VerticalWorkloadAutoscalerList
+
+	// Fetch all VWAs that reference the same scale target as the HPA using the index
+	if err := r.List(context.Background(), &vwaList,
+		client.InNamespace(hpaObj.Namespace),
+		client.MatchingFields{
+			statusScaleTargetRefName: hpaObj.Spec.ScaleTargetRef.Name,
+			statusScaleTargetRefKind: hpaObj.Spec.ScaleTargetRef.Kind,
+		}); err != nil {
+		log.Log.Error(err, "failed to list VerticalWorkloadAutoscaler objects")
+		return requests
+	}
 
 	// Fetch all VWAs and find the one referencing this HPA's scale target
-	var vwaList vwav1.VerticalWorkloadAutoscalerList
 	if err := r.List(context.Background(), &vwaList, client.InNamespace(hpaObj.Namespace)); err != nil {
 		return requests
 	}
 
+	// Create reconcile requests for all matched VWAs
 	for _, vwa := range vwaList.Items {
-		if vwa.Status.ScaleTargetRef.Name == hpaObj.Spec.ScaleTargetRef.Name &&
-			vwa.Status.ScaleTargetRef.Kind == hpaObj.Spec.ScaleTargetRef.Kind {
-			requests = append(requests, reconcile.Request{
-				NamespacedName: client.ObjectKey{Name: vwa.Name, Namespace: vwa.Namespace},
-			})
-		}
+		requests = append(requests, reconcile.Request{
+			NamespacedName: client.ObjectKey{
+				Namespace: vwa.Namespace,
+				Name:      vwa.Name,
+			},
+		})
 	}
+
 	return requests
 }
 

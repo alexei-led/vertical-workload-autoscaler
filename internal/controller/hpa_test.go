@@ -279,13 +279,29 @@ func TestFindVWAForHPA(t *testing.T) {
 					},
 				},
 			},
-			expectedReqs: []reconcile.Request{},
+			expectedReqs: []reconcile.Request{
+				{
+					NamespacedName: client.ObjectKey{Name: "another-vwa", Namespace: "default"},
+				},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(tt.vwaList).Build()
+			client := fake.NewClientBuilder().
+				WithScheme(s).
+				WithRuntimeObjects(tt.vwaList).
+				WithIndex(&vwav1.VerticalWorkloadAutoscaler{}, statusScaleTargetRefName, func(obj client.Object) []string {
+					vwa := obj.(*vwav1.VerticalWorkloadAutoscaler)
+					return []string{vwa.Status.ScaleTargetRef.Name}
+				}).
+				WithIndex(&vwav1.VerticalWorkloadAutoscaler{}, statusScaleTargetRefKind, func(obj client.Object) []string {
+					vwa := obj.(*vwav1.VerticalWorkloadAutoscaler)
+					return []string{vwa.Status.ScaleTargetRef.Kind}
+				}).
+				Build()
+
 			r := &VerticalWorkloadAutoscalerReconciler{
 				Client: client,
 			}
