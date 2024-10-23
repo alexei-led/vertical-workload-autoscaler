@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"time"
 
 	vwav1 "github.com/alexei-led/vertical-workload-autoscaler/api/v1alpha1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -42,6 +43,7 @@ type VerticalWorkloadAutoscalerReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+	Timeout  time.Duration
 }
 
 // +kubebuilder:rbac:groups=autoscaling.workload.io,resources=verticalworkloadautoscalers,verbs=get;list;watch;create;update;patch;delete
@@ -88,8 +90,9 @@ func (r *VerticalWorkloadAutoscalerReconciler) getVWA(ctx context.Context, names
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, timeout time.Duration) error {
 	r.Recorder = mgr.GetEventRecorderFor("vwa-controller-manager")
+	r.Timeout = timeout
 	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&vwav1.VerticalWorkloadAutoscaler{}, builder.WithPredicates(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
@@ -159,11 +162,13 @@ func (r *VerticalWorkloadAutoscalerReconciler) ensureNoDuplicateVWA(ctx context.
 func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	// Set a timeout for the context
+	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
+	defer cancel()
+
 	// Ensure no duplicate VWA exists
 	if err := r.ensureNoDuplicateVWA(ctx, wa); err != nil {
-		logger.Error(err, "duplicate VWA found", "VWA", wa.Name)
-		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonVPAReferenceConflict, fmt.Sprintf("VPA '%s' is already referenced by another VWA object", wa.Spec.VPAReference.Name)) // nolint:errcheck
-		return ctrl.Result{}, err                                                                                                                                                                              // Return error to indicate failure and retry                                                                                                                                                                              // Avoid calling reconcile again
+		return r.handleError(ctx, wa, err, "duplicate VWA found", ReasonVPAReferenceConflict, fmt.Sprintf("VPA '%s' is already referenced by another VWA object", wa.Spec.VPAReference.Name))
 	}
 
 	// Check if an update is allowed now or should be delayed
@@ -177,85 +182,51 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	vpa, err := r.fetchVPA(ctx, *wa)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("VPA not found: ignoring since object must be deleted", "VPA", wa.Spec.VPAReference.Name)
-			r.recordEvent(wa, "Normal", "VPAReferenceNotFound", "VPA not found")                                                    // nolint:errcheck
-			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonVPAReferenceNotFound, "VPA not found") // nolint:errcheck
-			return ctrl.Result{}, nil
+			return r.handleNotFound(ctx, wa, "VPA not found", ReasonVPAReferenceNotFound)
 		}
-		logger.Error(err, "failed to fetch VPA", "VPA", wa.Spec.VPAReference.Name)
-		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch VPA") // nolint:errcheck
-		return ctrl.Result{}, err                                                                                         // Retry on error
+		return r.handleError(ctx, wa, err, "failed to fetch VPA", ReasonAPIError, "failed to fetch VPA")
 	}
 
 	// Update the VWA status with the VPA reference
 	r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionTrue, ReasonVPAFound, "VPA found") // nolint:errcheck
-	// Record that VPA was found
 	r.recordEvent(wa, "Normal", "VPAFound", fmt.Sprintf("VPA '%s' found", vpa.Name))
 
 	// if VPA has no recommendations, nothing to do
 	if vpa.Status.Recommendation == nil {
-		logger.Info("VPA has no recommendations", "VPA", vpa.Name)
-		r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionFalse, ReasonNoRecommendation, "VPA has no recommendations yet") // nolint:errcheck
-		return ctrl.Result{}, nil                                                                                                             // Avoid calling reconcile again
+		return r.handleNoRecommendations(ctx, wa, vpa)
 	}
 
 	// if VPA UpdateMode is not Off, skip the reconciliation since VPA Updater will handle it
-	if vpa.Spec.UpdatePolicy == nil || vpa.Spec.UpdatePolicy.UpdateMode == nil || vpa.Spec.UpdatePolicy.UpdateMode != nil && *vpa.Spec.UpdatePolicy.UpdateMode != vpav1.UpdateModeOff {
-		logger.Info("VPA UpdateMode is not Off: VPA Updater will handle the reconciliation", "VPA", vpa.Name)
-		r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionFalse, ReasonUpdateModeNotOff, "VPA UpdatePolicy.UpdateMode is not Off") // nolint:errcheck
-		return ctrl.Result{}, nil                                                                                                                     // Avoid calling reconcile
+	if vpa.Spec.UpdatePolicy == nil || vpa.Spec.UpdatePolicy.UpdateMode == nil || *vpa.Spec.UpdatePolicy.UpdateMode != vpav1.UpdateModeOff {
+		return r.handleUpdateModeNotOff(ctx, wa, vpa)
 	}
 
 	// Fetch the target object from the VPA configuration
 	targetObject, err := r.fetchTargetObject(ctx, vpa)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("target object not found; ignoring since object must be deleted", "VPA", vpa.Name)
-			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonTargetObjectNotFound, "target object not found") //nolint:errcheck
-			return ctrl.Result{}, nil
+			return r.handleNotFound(ctx, wa, "target object not found", ReasonTargetObjectNotFound)
 		}
-		logger.Error(err, "failed to fetch target object", "VPA", vpa.Name)
-		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch target object") //nolint:errcheck
-		return ctrl.Result{}, err                                                                                                   // Retry on error
+		return r.handleError(ctx, wa, err, "failed to fetch target object", ReasonAPIError, "failed to fetch target object")
 	}
 
 	// Update VWA Status.ScaleTargetRef if different from VPA TargetRef
-	if wa.Status.ScaleTargetRef.Name != vpa.Spec.TargetRef.Name || wa.Status.ScaleTargetRef.Kind != vpa.Spec.TargetRef.Kind {
-		wa.Status.ScaleTargetRef = autoscalingv2.CrossVersionObjectReference{
-			Kind:       vpa.Spec.TargetRef.Kind,
-			Name:       vpa.Spec.TargetRef.Name,
-			APIVersion: vpa.Spec.TargetRef.APIVersion,
-		}
-		if err = r.Status().Update(ctx, wa); err != nil {
-			logger.Error(err, "failed to update VWA status with new ScaleTargetRef")
-			return ctrl.Result{}, err // Retry on error
-		}
-		r.recordEvent(wa, "Normal", "ScaleTargetRefUpdated", fmt.Sprintf("ScaleTargetRef updated to '%s'", vpa.Spec.TargetRef.Name))
-		r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionTrue, ReasonTargetObjectFound, "target object found") //nolint:errcheck
+	if err := r.updateScaleTargetRef(ctx, wa, vpa); err != nil {
+		return r.handleError(ctx, wa, err, "failed to update VWA status with new ScaleTargetRef", ReasonAPIError, "failed to update VWA status with new ScaleTargetRef")
 	}
 
 	// fetch current resources of the target object
 	currentResources, err := r.fetchCurrentResources(targetObject)
 	if err != nil {
-		logger.Error(err, "failed to fetch current resources")
-		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to fetch current resources") // nolint:errcheck
-		return ctrl.Result{}, err                                                                                                       // Retry on error
+		return r.handleError(ctx, wa, err, "failed to fetch current resources", ReasonAPIError, "failed to fetch current resources")
 	}
 
 	// find the HPA associated with the target object
-	var ignoreCPU, ignoreMemory bool
-	hpa, err := r.findHPAForVWA(ctx, wa)
+	ignoreCPU, ignoreMemory, err := r.getIgnoreFlagsForHPA(ctx, wa)
 	if err != nil {
-		if !errors.IsNotFound(err) {
-			logger.Error(err, "unexpected error while finding HPA")
-			r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to find HPA") //nolint:errcheck
-			return ctrl.Result{}, err                                                                                        // Retry on error
-		}
+		return r.handleError(ctx, wa, err, "failed to find HPA", ReasonAPIError, "failed to find HPA")
 	}
-	// Check if the HPA has CPU or Memory metrics
-	if hpa != nil {
-		ignoreCPU, ignoreMemory = r.getIgnoreFlags(hpa)
-	}
+
 	// requeue if ignore flags were updated
 	if wa.Spec.IgnoreCPURecommendations != ignoreCPU || wa.Spec.IgnoreMemoryRecommendations != ignoreMemory {
 		r.recordEvent(wa, "Normal", "IgnoreFlagsUpdated", "ignore flags updated")
@@ -269,17 +240,12 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	// Update the target resource
 	updated, err := r.updateTargetObject(ctx, targetObject, wa, newResources, vpa.Spec.UpdatePolicy)
 	if err != nil {
-		logger.Error(err, "failed to update target resource")
-		r.recordEvent(wa, "Error", "UpdateFailed", "failed to update target resource")
-		r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, ReasonAPIError, "failed to update target resource") // nolint:errcheck
-		return ctrl.Result{}, err                                                                                                      // Retry on error
+		return r.handleError(ctx, wa, err, "failed to update target resource", ReasonAPIError, "failed to update target resource")
 	}
 
 	if updated {
-		// Update VerticalWorkloadAutoscaler status
-		if err = r.updateStatus(ctx, wa, newResources); err != nil {
-			logger.Error(err, "failed to update VerticalWorkloadAutoscaler status")
-			return ctrl.Result{}, err // Retry on error
+		if err := r.updateStatus(ctx, wa, newResources); err != nil {
+			return r.handleError(ctx, wa, err, "failed to update VerticalWorkloadAutoscaler status", ReasonAPIError, "failed to update VerticalWorkloadAutoscaler status")
 		}
 		r.recordEvent(wa, "Normal", "ResourcesUpdated", "resources updated")
 		r.updateStatusCondition(ctx, wa, ConditionTypeReconciled, metav1.ConditionTrue, ReasonUpdatedResources, "updated resources") //nolint:errcheck
@@ -288,4 +254,63 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 		r.updateStatusCondition(ctx, wa, ConditionTypeReconciled, metav1.ConditionFalse, ReasonWaitingForRecommendations, "waiting for VPA recommendations") //nolint:errcheck
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) handleError(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, err error, logMsg, reason, msg string) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Error(err, logMsg, "VWA", wa.Name)
+	r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, reason, msg) // nolint:errcheck
+	return ctrl.Result{}, err
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) handleNotFound(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, logMsg, reason string) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info(logMsg, "VWA", wa.Name)
+	r.recordEvent(wa, "Normal", reason, logMsg)                                                // nolint:errcheck
+	r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, reason, logMsg) // nolint:errcheck
+	return ctrl.Result{}, nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) handleNoRecommendations(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, vpa *vpav1.VerticalPodAutoscaler) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("VPA has no recommendations", "VPA", vpa.Name)
+	r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionFalse, ReasonNoRecommendation, "VPA has no recommendations yet") // nolint:errcheck
+	return ctrl.Result{}, nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) handleUpdateModeNotOff(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, vpa *vpav1.VerticalPodAutoscaler) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("VPA UpdateMode is not Off: VPA Updater will handle the reconciliation", "VPA", vpa.Name)
+	r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionFalse, ReasonUpdateModeNotOff, "VPA UpdatePolicy.UpdateMode is not Off") // nolint:errcheck
+	return ctrl.Result{}, nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) updateScaleTargetRef(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, vpa *vpav1.VerticalPodAutoscaler) error {
+	if wa.Status.ScaleTargetRef.Name != vpa.Spec.TargetRef.Name || wa.Status.ScaleTargetRef.Kind != vpa.Spec.TargetRef.Kind {
+		wa.Status.ScaleTargetRef = autoscalingv2.CrossVersionObjectReference{
+			Kind:       vpa.Spec.TargetRef.Kind,
+			Name:       vpa.Spec.TargetRef.Name,
+			APIVersion: vpa.Spec.TargetRef.APIVersion,
+		}
+		if err := r.Status().Update(ctx, wa); err != nil {
+			return err
+		}
+		r.recordEvent(wa, "Normal", "ScaleTargetRefUpdated", fmt.Sprintf("ScaleTargetRef updated to '%s'", vpa.Spec.TargetRef.Name))
+		r.updateStatusCondition(ctx, wa, ConditionTypeReady, metav1.ConditionTrue, ReasonTargetObjectFound, "target object found") //nolint:errcheck
+	}
+	return nil
+}
+
+func (r *VerticalWorkloadAutoscalerReconciler) getIgnoreFlagsForHPA(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler) (bool, bool, error) {
+	hpa, err := r.findHPAForVWA(ctx, wa)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return false, false, err
+		}
+	}
+	if hpa != nil {
+		ignoreCPU, ignoreMemory := r.getIgnoreFlags(hpa)
+		return ignoreCPU, ignoreMemory, nil
+	}
+	return false, false, nil
 }
