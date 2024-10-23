@@ -67,6 +67,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) updateStatusCondition(ctx context
 	return r.Status().Update(ctx, wa)
 }
 
+// nolint:unparam
 func (r *VerticalWorkloadAutoscalerReconciler) recordEvent(wa *vwav1.VerticalWorkloadAutoscaler, eventType, reason, message string) {
 	if r.Recorder != nil {
 		r.Recorder.Event(wa, eventType, reason, message)

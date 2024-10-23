@@ -256,6 +256,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleVWAChange(ctx context.Conte
 	return ctrl.Result{}, nil
 }
 
+// nolint:unparam
 func (r *VerticalWorkloadAutoscalerReconciler) handleError(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, err error, logMsg, reason, msg string) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Error(err, logMsg, "VWA", wa.Name)
@@ -263,14 +264,16 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleError(ctx context.Context, 
 	return ctrl.Result{}, err
 }
 
+// nolint:unparam
 func (r *VerticalWorkloadAutoscalerReconciler) handleNotFound(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, logMsg, reason string) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info(logMsg, "VWA", wa.Name)
-	r.recordEvent(wa, "Normal", reason, logMsg)                                                // nolint:errcheck
+	r.recordEvent(wa, "Normal", reason, logMsg)
 	r.updateStatusCondition(ctx, wa, ConditionTypeError, metav1.ConditionTrue, reason, logMsg) // nolint:errcheck
 	return ctrl.Result{}, nil
 }
 
+// nolint:unparam
 func (r *VerticalWorkloadAutoscalerReconciler) handleNoRecommendations(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, vpa *vpav1.VerticalPodAutoscaler) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("VPA has no recommendations", "VPA", vpa.Name)
@@ -278,6 +281,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) handleNoRecommendations(ctx conte
 	return ctrl.Result{}, nil
 }
 
+// nolint:unparam
 func (r *VerticalWorkloadAutoscalerReconciler) handleUpdateModeNotOff(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler, vpa *vpav1.VerticalPodAutoscaler) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("VPA UpdateMode is not Off: VPA Updater will handle the reconciliation", "VPA", vpa.Name)
