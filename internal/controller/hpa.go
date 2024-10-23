@@ -46,17 +46,23 @@ func (r *VerticalWorkloadAutoscalerReconciler) findVWAForHPA(_ context.Context, 
 }
 
 func (r *VerticalWorkloadAutoscalerReconciler) findHPAForVWA(ctx context.Context, vwa *vwav1.VerticalWorkloadAutoscaler) (*autoscalingv2.HorizontalPodAutoscaler, error) {
-	// scan list of HPAs and find the one that matches the VWA's scale target
 	var hpaList autoscalingv2.HorizontalPodAutoscalerList
-	if err := r.List(ctx, &hpaList, client.InNamespace(vwa.Namespace)); err != nil {
+
+	// Use client.MatchingFields to search for HPAs with the same scale target reference
+	if err := r.List(ctx, &hpaList,
+		client.InNamespace(vwa.Namespace),
+		client.MatchingFields{
+			hpaSpecScaleTargetRefName: vwa.Status.ScaleTargetRef.Name,
+			hpaSpecScaleTargetRefKind: vwa.Status.ScaleTargetRef.Kind,
+		}); err != nil {
 		return nil, err
 	}
-	for _, hpa := range hpaList.Items {
-		if hpa.Spec.ScaleTargetRef.Name == vwa.Status.ScaleTargetRef.Name &&
-			hpa.Spec.ScaleTargetRef.Kind == vwa.Status.ScaleTargetRef.Kind {
-			return &hpa, nil
-		}
+
+	if len(hpaList.Items) > 0 {
+		// Assuming only one HPA matches (if there could be more, handle that case)
+		return &hpaList.Items[0], nil
 	}
+
 	return nil, errors.NewNotFound(autoscalingv2.Resource("horizontalpodautoscalers"), "no matching HPA found")
 }
 

@@ -39,9 +39,11 @@ import (
 )
 
 const (
-	specVpaRefName           = "spec.vpaReference.name"
-	statusScaleTargetRefName = "status.scaleTargetRef.name"
-	statusScaleTargetRefKind = "status.scaleTargetRef.kind"
+	specVpaRefName            = "spec.vpaReference.name"
+	statusScaleTargetRefName  = "status.scaleTargetRef.name"
+	statusScaleTargetRefKind  = "status.scaleTargetRef.kind"
+	hpaSpecScaleTargetRefName = "spec.scaleTargetRef.name"
+	hpaSpecScaleTargetRefKind = "spec.scaleTargetRef.kind"
 )
 
 // VerticalWorkloadAutoscalerReconciler reconciles a VerticalWorkloadAutoscaler object
@@ -102,23 +104,32 @@ func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager
 
 	// index VWA objects by spec VPA reference name, status scale target ref name and kind
 	// used to find VWA objects referencing the same VPA and HPA objects referencing the same scale target
+	// Index HPA objects by spec.scaleTargetRef.name and spec.scaleTargetRef.kind
+	// used to find HPA objects referencing the same scale target as the VWA
 	indexers := []struct {
 		field string
 		index func(client.Object) []string
+		typ   client.Object
 	}{
 		{specVpaRefName, func(rawObj client.Object) []string {
 			return []string{rawObj.(*vwav1.VerticalWorkloadAutoscaler).Spec.VPAReference.Name}
-		}},
+		}, &vwav1.VerticalWorkloadAutoscaler{}},
 		{statusScaleTargetRefName, func(o client.Object) []string {
 			return []string{o.(*vwav1.VerticalWorkloadAutoscaler).Status.ScaleTargetRef.Name}
-		}},
+		}, &vwav1.VerticalWorkloadAutoscaler{}},
 		{statusScaleTargetRefKind, func(o client.Object) []string {
 			return []string{o.(*vwav1.VerticalWorkloadAutoscaler).Status.ScaleTargetRef.Kind}
-		}},
+		}, &vwav1.VerticalWorkloadAutoscaler{}},
+		{hpaSpecScaleTargetRefName, func(o client.Object) []string {
+			return []string{o.(*autoscalingv2.HorizontalPodAutoscaler).Spec.ScaleTargetRef.Name}
+		}, &autoscalingv2.HorizontalPodAutoscaler{}},
+		{hpaSpecScaleTargetRefKind, func(o client.Object) []string {
+			return []string{o.(*autoscalingv2.HorizontalPodAutoscaler).Spec.ScaleTargetRef.Kind}
+		}, &autoscalingv2.HorizontalPodAutoscaler{}},
 	}
 
 	for _, indexer := range indexers {
-		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &vwav1.VerticalWorkloadAutoscaler{}, indexer.field, indexer.index); err != nil {
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), indexer.typ, indexer.field, indexer.index); err != nil {
 			log.Log.Error(err, "failed to setup field indexer", "field", indexer.field)
 			return err
 		}

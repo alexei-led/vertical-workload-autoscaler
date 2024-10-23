@@ -368,10 +368,19 @@ func TestHandleVWAChange(t *testing.T) {
 				WithScheme(scheme).
 				WithStatusSubresource(&vwav1.VerticalWorkloadAutoscaler{}).
 				WithObjects(objs...).
-				WithIndex(&vwav1.VerticalWorkloadAutoscaler{}, "spec.vpaReference.name", func(obj client.Object) []string {
+				WithIndex(&vwav1.VerticalWorkloadAutoscaler{}, specVpaRefName, func(obj client.Object) []string {
 					vwa := obj.(*vwav1.VerticalWorkloadAutoscaler)
 					return []string{vwa.Spec.VPAReference.Name}
-				}).Build()
+				}).
+				WithIndex(&autoscalingv2.HorizontalPodAutoscaler{}, hpaSpecScaleTargetRefName, func(obj client.Object) []string {
+					hpa := obj.(*autoscalingv2.HorizontalPodAutoscaler)
+					return []string{hpa.Spec.ScaleTargetRef.Name}
+				}).
+				WithIndex(&autoscalingv2.HorizontalPodAutoscaler{}, hpaSpecScaleTargetRefKind, func(obj client.Object) []string {
+					hpa := obj.(*autoscalingv2.HorizontalPodAutoscaler)
+					return []string{hpa.Spec.ScaleTargetRef.Kind}
+				}).
+				Build()
 
 			r := &VerticalWorkloadAutoscalerReconciler{Client: client}
 
