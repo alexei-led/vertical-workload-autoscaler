@@ -279,11 +279,7 @@ func TestFindVWAForHPA(t *testing.T) {
 					},
 				},
 			},
-			expectedReqs: []reconcile.Request{
-				{
-					NamespacedName: client.ObjectKey{Name: "another-vwa", Namespace: "default"},
-				},
-			},
+			expectedReqs: []reconcile.Request{},
 		},
 	}
 

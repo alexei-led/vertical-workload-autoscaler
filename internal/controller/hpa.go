@@ -32,11 +32,6 @@ func (r *VerticalWorkloadAutoscalerReconciler) findVWAForHPA(_ context.Context, 
 		return requests
 	}
 
-	// Fetch all VWAs and find the one referencing this HPA's scale target
-	if err := r.List(context.Background(), &vwaList, client.InNamespace(hpaObj.Namespace)); err != nil {
-		return requests
-	}
-
 	// Create reconcile requests for all matched VWAs
 	for _, vwa := range vwaList.Items {
 		requests = append(requests, reconcile.Request{
