@@ -38,6 +38,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
+const (
+	specVpaRefName = "spec.vpaReference.name"
+)
+
 // VerticalWorkloadAutoscalerReconciler reconciles a VerticalWorkloadAutoscaler object
 type VerticalWorkloadAutoscalerReconciler struct {
 	client.Client
@@ -93,6 +97,17 @@ func (r *VerticalWorkloadAutoscalerReconciler) getVWA(ctx context.Context, names
 func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, timeout time.Duration) error {
 	r.Recorder = mgr.GetEventRecorderFor("vwa-controller-manager")
 	r.Timeout = timeout
+	// index VWA objects by VPA reference name
+	// used to find VWA objects referencing the same VPA
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &vwav1.VerticalWorkloadAutoscaler{}, specVpaRefName, func(rawObj client.Object) []string {
+		wa := rawObj.(*vwav1.VerticalWorkloadAutoscaler)
+		return []string{wa.Spec.VPAReference.Name}
+	},
+	); err != nil {
+		log.Log.Error(err, "failed to setup field indexer by VPA reference name")
+		return err
+	}
+	// Create a new controller with the manager
 	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&vwav1.VerticalWorkloadAutoscaler{}, builder.WithPredicates(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
@@ -146,7 +161,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager
 func (r *VerticalWorkloadAutoscalerReconciler) ensureNoDuplicateVWA(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler) error {
 	// List all VerticalWorkloadAutoscaler objects
 	var waList vwav1.VerticalWorkloadAutoscalerList
-	if err := r.List(ctx, &waList); err != nil {
+	if err := r.List(ctx, &waList, client.InNamespace(wa.Namespace), client.MatchingFields{specVpaRefName: wa.Spec.VPAReference.Name}); err != nil {
 		return err
 	}
 

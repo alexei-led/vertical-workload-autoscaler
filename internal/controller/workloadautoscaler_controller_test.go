@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	_client "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -67,7 +68,15 @@ func TestEnsureNoDuplicateVWA(t *testing.T) {
 			for _, vwa := range tt.vwaList {
 				objs = append(objs, &vwa)
 			}
-			client := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&vwav1.VerticalWorkloadAutoscaler{}).WithObjects(objs...).Build()
+			client := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithStatusSubresource(&vwav1.VerticalWorkloadAutoscaler{}).
+				WithObjects(objs...).
+				WithIndex(&vwav1.VerticalWorkloadAutoscaler{}, specVpaRefName, func(obj client.Object) []string {
+					vwa := obj.(*vwav1.VerticalWorkloadAutoscaler)
+					return []string{vwa.Spec.VPAReference.Name}
+				}).Build()
+
 			r := &VerticalWorkloadAutoscalerReconciler{Client: client}
 
 			err := r.ensureNoDuplicateVWA(context.Background(), &tt.vwa)
@@ -355,7 +364,15 @@ func TestHandleVWAChange(t *testing.T) {
 			if tt.deployment != nil {
 				objs = append(objs, tt.deployment)
 			}
-			client := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&vwav1.VerticalWorkloadAutoscaler{}).WithObjects(objs...).Build()
+			client := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithStatusSubresource(&vwav1.VerticalWorkloadAutoscaler{}).
+				WithObjects(objs...).
+				WithIndex(&vwav1.VerticalWorkloadAutoscaler{}, "spec.vpaReference.name", func(obj client.Object) []string {
+					vwa := obj.(*vwav1.VerticalWorkloadAutoscaler)
+					return []string{vwa.Spec.VPAReference.Name}
+				}).Build()
+
 			r := &VerticalWorkloadAutoscalerReconciler{Client: client}
 
 			result, err := r.handleVWAChange(context.Background(), &tt.vwa) // Pass by reference
