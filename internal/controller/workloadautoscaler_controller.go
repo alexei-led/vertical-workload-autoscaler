@@ -38,6 +38,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
+const (
+	specVpaRefName            = "spec.vpaReference.name"
+	statusScaleTargetRefName  = "status.scaleTargetRef.name"
+	statusScaleTargetRefKind  = "status.scaleTargetRef.kind"
+	hpaSpecScaleTargetRefName = "spec.scaleTargetRef.name"
+	hpaSpecScaleTargetRefKind = "spec.scaleTargetRef.kind"
+)
+
 // VerticalWorkloadAutoscalerReconciler reconciles a VerticalWorkloadAutoscaler object
 type VerticalWorkloadAutoscalerReconciler struct {
 	client.Client
@@ -93,6 +101,41 @@ func (r *VerticalWorkloadAutoscalerReconciler) getVWA(ctx context.Context, names
 func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager, timeout time.Duration) error {
 	r.Recorder = mgr.GetEventRecorderFor("vwa-controller-manager")
 	r.Timeout = timeout
+
+	// index VWA objects by spec VPA reference name, status scale target ref name and kind
+	// used to find VWA objects referencing the same VPA and HPA objects referencing the same scale target
+	// Index HPA objects by spec.scaleTargetRef.name and spec.scaleTargetRef.kind
+	// used to find HPA objects referencing the same scale target as the VWA
+	indexers := []struct {
+		field string
+		index func(client.Object) []string
+		typ   client.Object
+	}{
+		{specVpaRefName, func(rawObj client.Object) []string {
+			return []string{rawObj.(*vwav1.VerticalWorkloadAutoscaler).Spec.VPAReference.Name}
+		}, &vwav1.VerticalWorkloadAutoscaler{}},
+		{statusScaleTargetRefName, func(o client.Object) []string {
+			return []string{o.(*vwav1.VerticalWorkloadAutoscaler).Status.ScaleTargetRef.Name}
+		}, &vwav1.VerticalWorkloadAutoscaler{}},
+		{statusScaleTargetRefKind, func(o client.Object) []string {
+			return []string{o.(*vwav1.VerticalWorkloadAutoscaler).Status.ScaleTargetRef.Kind}
+		}, &vwav1.VerticalWorkloadAutoscaler{}},
+		{hpaSpecScaleTargetRefName, func(o client.Object) []string {
+			return []string{o.(*autoscalingv2.HorizontalPodAutoscaler).Spec.ScaleTargetRef.Name}
+		}, &autoscalingv2.HorizontalPodAutoscaler{}},
+		{hpaSpecScaleTargetRefKind, func(o client.Object) []string {
+			return []string{o.(*autoscalingv2.HorizontalPodAutoscaler).Spec.ScaleTargetRef.Kind}
+		}, &autoscalingv2.HorizontalPodAutoscaler{}},
+	}
+
+	for _, indexer := range indexers {
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), indexer.typ, indexer.field, indexer.index); err != nil {
+			log.Log.Error(err, "failed to setup field indexer", "field", indexer.field)
+			return err
+		}
+	}
+
+	// Create a new controller with the manager
 	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&vwav1.VerticalWorkloadAutoscaler{}, builder.WithPredicates(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
@@ -146,7 +189,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) SetupWithManager(mgr ctrl.Manager
 func (r *VerticalWorkloadAutoscalerReconciler) ensureNoDuplicateVWA(ctx context.Context, wa *vwav1.VerticalWorkloadAutoscaler) error {
 	// List all VerticalWorkloadAutoscaler objects
 	var waList vwav1.VerticalWorkloadAutoscalerList
-	if err := r.List(ctx, &waList); err != nil {
+	if err := r.List(ctx, &waList, client.InNamespace(wa.Namespace), client.MatchingFields{specVpaRefName: wa.Spec.VPAReference.Name}); err != nil {
 		return err
 	}
 

@@ -9,7 +9,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	_client "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -198,7 +198,17 @@ func TestFindHPAForVWA(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(tt.hpaList).Build()
+			client := fake.NewClientBuilder().
+				WithScheme(s).
+				WithRuntimeObjects(tt.hpaList).
+				WithIndex(&autoscalingv2.HorizontalPodAutoscaler{}, hpaSpecScaleTargetRefName, func(obj _client.Object) []string {
+					hpa := obj.(*autoscalingv2.HorizontalPodAutoscaler)
+					return []string{hpa.Spec.ScaleTargetRef.Name}
+				}).
+				WithIndex(&autoscalingv2.HorizontalPodAutoscaler{}, hpaSpecScaleTargetRefKind, func(obj _client.Object) []string {
+					hpa := obj.(*autoscalingv2.HorizontalPodAutoscaler)
+					return []string{hpa.Spec.ScaleTargetRef.Kind}
+				}).Build()
 			r := &VerticalWorkloadAutoscalerReconciler{
 				Client: client,
 			}
@@ -251,7 +261,7 @@ func TestFindVWAForHPA(t *testing.T) {
 			},
 			expectedReqs: []reconcile.Request{
 				{
-					NamespacedName: client.ObjectKey{Name: "test-vwa", Namespace: "default"},
+					NamespacedName: _client.ObjectKey{Name: "test-vwa", Namespace: "default"},
 				},
 			},
 		},
@@ -285,7 +295,19 @@ func TestFindVWAForHPA(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(tt.vwaList).Build()
+			client := fake.NewClientBuilder().
+				WithScheme(s).
+				WithRuntimeObjects(tt.vwaList).
+				WithIndex(&vwav1.VerticalWorkloadAutoscaler{}, statusScaleTargetRefName, func(obj _client.Object) []string {
+					vwa := obj.(*vwav1.VerticalWorkloadAutoscaler)
+					return []string{vwa.Status.ScaleTargetRef.Name}
+				}).
+				WithIndex(&vwav1.VerticalWorkloadAutoscaler{}, statusScaleTargetRefKind, func(obj _client.Object) []string {
+					vwa := obj.(*vwav1.VerticalWorkloadAutoscaler)
+					return []string{vwa.Status.ScaleTargetRef.Kind}
+				}).
+				Build()
+
 			r := &VerticalWorkloadAutoscalerReconciler{
 				Client: client,
 			}

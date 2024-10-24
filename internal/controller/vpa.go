@@ -42,21 +42,27 @@ func (r *VerticalWorkloadAutoscalerReconciler) findVWAForVPA(_ context.Context, 
 		return requests
 	}
 
+	// Define the namespace for the query (VPA and VWA must be in the same namespace)
+	namespace := vpaObj.Namespace
+
+	// List only VWA objects that reference this VPA within the same namespace
 	var vwaList vwav1.VerticalWorkloadAutoscalerList
-	if err := r.List(context.Background(), &vwaList); err != nil {
+	if err := r.List(context.Background(), &vwaList,
+		client.InNamespace(namespace),
+		client.MatchingFields{specVpaRefName: vpaObj.Name}); err != nil {
 		log.Log.Error(err, "failed to list VerticalWorkloadAutoscaler objects")
 		return requests
 	}
 
+	// Create reconcile requests for the matched VWA objects
 	for _, vwa := range vwaList.Items {
-		if vwa.Spec.VPAReference.Name == vpaObj.Name {
-			requests = append(requests, reconcile.Request{
-				NamespacedName: client.ObjectKey{
-					Namespace: vwa.Namespace,
-					Name:      vwa.Name,
-				},
-			})
-		}
+		requests = append(requests, reconcile.Request{
+			NamespacedName: client.ObjectKey{
+				Namespace: vwa.Namespace,
+				Name:      vwa.Name,
+			},
+		})
 	}
+
 	return requests
 }
