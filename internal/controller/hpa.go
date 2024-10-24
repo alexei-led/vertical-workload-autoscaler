@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-func (r *VerticalWorkloadAutoscalerReconciler) findVWAForHPA(_ context.Context, hpa client.Object) []reconcile.Request {
+func (r *VerticalWorkloadAutoscalerReconciler) findVWAForHPA(ctx context.Context, hpa client.Object) []reconcile.Request {
 	requests := make([]reconcile.Request, 0)
 	hpaObj, ok := hpa.(*autoscalingv2.HorizontalPodAutoscaler)
 	if !ok {
@@ -22,7 +22,7 @@ func (r *VerticalWorkloadAutoscalerReconciler) findVWAForHPA(_ context.Context, 
 	var vwaList vwav1.VerticalWorkloadAutoscalerList
 
 	// Fetch all VWAs that reference the same scale target as the HPA using the index
-	if err := r.List(context.Background(), &vwaList,
+	if err := r.List(ctx, &vwaList,
 		client.InNamespace(hpaObj.Namespace),
 		client.MatchingFields{
 			statusScaleTargetRefName: hpaObj.Spec.ScaleTargetRef.Name,
